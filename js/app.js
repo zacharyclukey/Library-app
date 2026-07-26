@@ -1,0 +1,446 @@
+import * as db from "./db.js";
+import * as api from "./api.js";
+import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
+
+// ---------- element handles ----------
+const $ = (sel) => document.querySelector(sel);
+const bookList = $("#book-list");
+const emptyState = $("#empty-state");
+const addModal = $("#add-modal");
+const confirmModal = $("#confirm-modal");
+const detailModal = $("#detail-modal");
+const scanStatus = $("#scan-status");
+const scannerArea = $("#scanner-area");
+const scannerVideo = $("#scanner-video");
+const searchResults = $("#search-results");
+
+let currentShelf = "owned";
+let pendingBooks = []; // queue of looked-up books waiting for shelf choice
+const seriesCache = new Map(); // book.id -> { series, books } | null
+
+const SHELF_LABEL = { owned: "Owned", tbr: "To Be Read", completed: "Completed" };
+
+// ---------- rendering ----------
+
+function esc(s) {
+  const div = document.createElement("div");
+  div.textContent = s ?? "";
+  return div.innerHTML;
+}
+
+function renderShelf() {
+  const books = db.getBooksOnShelf(currentShelf);
+  for (const shelf of ["owned", "tbr", "completed"]) {
+    $(`#count-${shelf}`).textContent = db.getBooksOnShelf(shelf).length;
+  }
+  emptyState.classList.toggle("hidden", books.length > 0);
+  bookList.innerHTML = books
+    .map((b) => {
+      const cached = seriesCache.get(b.id);
+      const missing = cached?.missingCount ?? 0;
+      const seriesBadge = b.series?.name
+        ? `<span class="badge series-badge" title="Part of the ${esc(b.series.name)} series">
+             ${esc(b.series.name)}${b.series.position ? " #" + b.series.position : ""}
+           </span>`
+        : "";
+      const moreBadge = missing > 0
+        ? `<span class="badge more-badge">📚 ${missing} more in series</span>`
+        : "";
+      return `
+      <article class="book-card" data-id="${esc(b.id)}">
+        <img class="cover" src="${esc(b.coverUrl ?? "")}" alt=""
+             onerror="this.classList.add('no-cover')" loading="lazy" />
+        <div class="book-info">
+          <h3>${esc(b.title)}</h3>
+          <p class="authors">${esc((b.authors ?? []).join(", "))}</p>
+          <p class="edition">
+            ${esc([b.format, b.publisher, b.publishDate].filter(Boolean).join(" · "))}
+          </p>
+          <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
+          <div class="badges">${seriesBadge}${moreBadge}</div>
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  // Kick off background series checks for owned books we haven't checked yet.
+  books.forEach((b) => {
+    if (!seriesCache.has(b.id)) checkSeriesInBackground(b);
+  });
+}
+
+async function checkSeriesInBackground(book) {
+  seriesCache.set(book.id, null); // mark in-flight
+  try {
+    const series = await api.detectSeries(book);
+    if (!series) {
+      seriesCache.set(book.id, { series: null, books: [], missingCount: 0 });
+      return;
+    }
+    if (!book.series?.name) db.updateBook(book.id, { series });
+
+    const entries = await api.listSeriesBooks(series.name, book.authors);
+    const ownedTitles = new Set(
+      db.getOwnedBooks().map((b) => normTitle(b.title))
+    );
+    const missing = entries.filter((e) => !ownedTitles.has(normTitle(e.title)));
+    seriesCache.set(book.id, {
+      series,
+      books: entries,
+      missingCount: entries.length ? missing.length : 0,
+    });
+    renderShelf();
+  } catch {
+    seriesCache.delete(book.id);
+  }
+}
+
+function normTitle(t) {
+  return (t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// ---------- shelf tabs ----------
+
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.classList.toggle("active", t === tab);
+      t.setAttribute("aria-selected", t === tab);
+    });
+    currentShelf = tab.dataset.shelf;
+    renderShelf();
+  });
+});
+
+// ---------- add flow ----------
+
+$("#add-book-btn").addEventListener("click", () => {
+  scanStatus.textContent = "";
+  searchResults.innerHTML = "";
+  addModal.showModal();
+});
+
+document.querySelectorAll("[data-close]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    const modal = $("#" + btn.dataset.close);
+    if (modal === addModal) closeScanner();
+    modal.close();
+  })
+);
+
+function closeScanner() {
+  stopLiveScan(scannerVideo);
+  scannerArea.classList.add("hidden");
+}
+
+$("#method-camera").addEventListener("click", async () => {
+  scannerArea.classList.remove("hidden");
+  scanStatus.textContent = "Starting camera… point it at the book's barcode.";
+  await startLiveScan(
+    scannerVideo,
+    (isbn) => {
+      scanStatus.textContent = `Found barcode ${isbn} — looking it up…`;
+      handleFoundIsbn(isbn);
+    },
+    (err) => {
+      scanStatus.textContent =
+        "Camera unavailable (" + err.message + "). Try the photo option or manual entry. " +
+        "Note: the camera needs the app served over HTTPS or localhost.";
+      scannerArea.classList.add("hidden");
+    }
+  );
+});
+
+$("#stop-scan-btn").addEventListener("click", closeScanner);
+
+$("#method-photo").addEventListener("click", () => $("#photo-input").click());
+
+$("#photo-input").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  scanStatus.textContent = "Reading barcodes from the photo…";
+  try {
+    const isbns = await scanImageFile(file);
+    if (isbns.length === 0) {
+      scanStatus.textContent =
+        "No barcode found in that photo. Get closer to the barcode (usually on the back cover), or enter the ISBN manually below.";
+      return;
+    }
+    scanStatus.textContent = `Found ${isbns.length} book${isbns.length > 1 ? "s" : ""} — looking them up…`;
+    for (const isbn of isbns) await handleFoundIsbn(isbn);
+  } catch (err) {
+    scanStatus.textContent = "Could not read that image: " + err.message;
+  }
+});
+
+async function handleFoundIsbn(isbn) {
+  try {
+    const book = await api.lookupByIsbn(isbn);
+    if (!book) {
+      scanStatus.textContent = `No book found for ISBN ${isbn}. Try searching by title below.`;
+      return;
+    }
+    if (db.hasBook(book.id)) {
+      scanStatus.textContent = `“${book.title}” is already in your library.`;
+      return;
+    }
+    queueBookForConfirm(book);
+  } catch (err) {
+    scanStatus.textContent = "Lookup failed: " + err.message;
+  }
+}
+
+// ---------- manual entry ----------
+
+$("#isbn-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const isbn = api.normalizeIsbn($("#isbn-input").value);
+  if (!isbn) {
+    scanStatus.textContent = "That doesn't look like a valid ISBN (need 10 or 13 digits).";
+    return;
+  }
+  scanStatus.textContent = `Looking up ISBN ${isbn}…`;
+  await handleFoundIsbn(isbn);
+  $("#isbn-input").value = "";
+});
+
+$("#title-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("#title-input").value.trim();
+  if (!q) return;
+  scanStatus.textContent = "Searching…";
+  const results = await api.searchByTitle(q);
+  scanStatus.textContent = results.length ? "" : "No matches found.";
+  searchResults.innerHTML = results
+    .map(
+      (r, i) => `
+      <button class="search-result" data-idx="${i}">
+        ${r.coverUrl ? `<img src="${esc(r.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
+        <span>
+          <strong>${esc(r.title)}</strong><br />
+          <small>${esc(r.authors.join(", "))}${r.year ? " · " + r.year : ""}</small>
+        </span>
+      </button>`
+    )
+    .join("");
+  searchResults.querySelectorAll(".search-result").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const r = results[Number(btn.dataset.idx)];
+      scanStatus.textContent = `Loading “${r.title}”…`;
+      // Prefer a real edition via its ISBN so we keep version specifics.
+      let book = r.isbns?.length ? await api.lookupByIsbn(r.isbns[0]) : null;
+      if (!book) {
+        book = {
+          id: "ol:" + r.workKey.replace("/works/", ""),
+          title: r.title,
+          authors: r.authors,
+          workKey: r.workKey,
+          coverUrl: r.coverUrl?.replace("-S.jpg", "-M.jpg") ?? null,
+          isbn13: null, isbn10: null, publisher: null, publishDate: null,
+          pageCount: null, format: null, editionKey: null, series: null,
+        };
+      }
+      scanStatus.textContent = "";
+      queueBookForConfirm(book);
+    })
+  );
+});
+
+// ---------- confirm / shelf choice ----------
+
+function queueBookForConfirm(book) {
+  pendingBooks.push(book);
+  if (!confirmModal.open) showNextPendingBook();
+}
+
+function showNextPendingBook() {
+  const book = pendingBooks[0];
+  if (!book) {
+    confirmModal.close();
+    return;
+  }
+  $("#confirm-book").innerHTML = `
+    <img class="cover" src="${esc(book.coverUrl ?? "")}" alt=""
+         onerror="this.classList.add('no-cover')" />
+    <div>
+      <h3>${esc(book.title)}</h3>
+      ${book.subtitle ? `<p class="subtitle">${esc(book.subtitle)}</p>` : ""}
+      <p class="authors">${esc((book.authors ?? []).join(", "))}</p>
+      <p class="edition">${esc([book.format, book.publisher, book.publishDate,
+        book.pageCount ? book.pageCount + " pages" : null].filter(Boolean).join(" · "))}</p>
+      <p class="isbn">${book.isbn13 ? "ISBN-13 " + esc(book.isbn13) : ""}
+        ${book.isbn10 ? " · ISBN-10 " + esc(book.isbn10) : ""}</p>
+    </div>`;
+  if (!confirmModal.open) confirmModal.showModal();
+}
+
+document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    const book = pendingBooks.shift();
+    if (!book) return;
+    const shelf = btn.dataset.addShelf;
+    const alsoOwn = $("#also-own-checkbox").checked;
+    db.addBook({ ...book, shelf, owned: shelf === "owned" || alsoOwn });
+    seriesCache.delete(book.id);
+    renderShelf();
+    scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
+    showNextPendingBook();
+  })
+);
+
+confirmModal.addEventListener("close", () => {
+  // If dismissed without choosing, drop the current pending book.
+  if (pendingBooks.length) {
+    pendingBooks.shift();
+    if (pendingBooks.length) setTimeout(showNextPendingBook, 50);
+  }
+});
+
+// ---------- detail view ----------
+
+bookList.addEventListener("click", (e) => {
+  const card = e.target.closest(".book-card");
+  if (card) openDetail(card.dataset.id);
+});
+
+async function openDetail(id) {
+  const b = db.getBook(id);
+  if (!b) return;
+
+  const rows = [
+    ["Author(s)", (b.authors ?? []).join(", ")],
+    ["Format", b.format],
+    ["Publisher", b.publisher],
+    ["Published", b.publishDate],
+    ["Pages", b.pageCount],
+    ["ISBN-13", b.isbn13],
+    ["ISBN-10", b.isbn10],
+    ["Open Library edition", b.editionKey],
+    ["Shelf", SHELF_LABEL[b.shelf] + (b.owned && b.shelf !== "owned" ? " (owned copy)" : "")],
+  ].filter(([, v]) => v);
+
+  $("#detail-content").innerHTML = `
+    <div class="confirm-book">
+      <img class="cover" src="${esc(b.coverUrl ?? "")}" alt=""
+           onerror="this.classList.add('no-cover')" />
+      <div>
+        <h3>${esc(b.title)}</h3>
+        ${b.subtitle ? `<p class="subtitle">${esc(b.subtitle)}</p>` : ""}
+        <table class="detail-table">
+          ${rows.map(([k, v]) => `<tr><th>${k}</th><td>${esc(String(v))}</td></tr>`).join("")}
+        </table>
+      </div>
+    </div>
+    <div class="detail-actions">
+      ${["owned", "tbr", "completed"]
+        .filter((s) => s !== b.shelf)
+        .map((s) => `<button class="secondary-btn" data-move="${s}">Move to ${SHELF_LABEL[s]}</button>`)
+        .join("")}
+      <button class="danger-btn" data-delete>Remove</button>
+    </div>
+    <div id="series-section" class="series-section">
+      <h3>Series</h3>
+      <p class="series-loading">Checking series info…</p>
+    </div>`;
+  detailModal.showModal();
+
+  $("#detail-content").querySelectorAll("[data-move]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      db.updateBook(id, { shelf: btn.dataset.move, owned: btn.dataset.move === "owned" ? true : b.owned });
+      detailModal.close();
+      renderShelf();
+    })
+  );
+  $("#detail-content").querySelector("[data-delete]").addEventListener("click", () => {
+    if (confirm(`Remove “${b.title}” from your library?`)) {
+      db.removeBook(id);
+      seriesCache.delete(id);
+      detailModal.close();
+      renderShelf();
+    }
+  });
+
+  renderSeriesSection(b);
+}
+
+async function renderSeriesSection(book) {
+  const section = () => detailModal.querySelector("#series-section");
+  let cached = seriesCache.get(book.id);
+  if (!cached) {
+    try {
+      const series = await api.detectSeries(book);
+      if (series) {
+        const entries = await api.listSeriesBooks(series.name, book.authors);
+        cached = { series, books: entries };
+        if (!book.series?.name) db.updateBook(book.id, { series });
+      } else {
+        cached = { series: null, books: [] };
+      }
+      seriesCache.set(book.id, { ...cached, missingCount: 0 });
+    } catch {
+      cached = null;
+    }
+  }
+  const el = section();
+  if (!el) return; // modal closed meanwhile
+
+  if (!cached || !cached.series) {
+    el.innerHTML = `<h3>Series</h3><p class="muted">No series found — this looks like a standalone book.</p>`;
+    return;
+  }
+
+  const ownedTitles = new Set(db.getOwnedBooks().map((b) => normTitle(b.title)));
+  const items = cached.books.map((e) => {
+    const owned = ownedTitles.has(normTitle(e.title));
+    return `
+      <li class="${owned ? "owned" : "missing"}">
+        ${e.coverUrl ? `<img src="${esc(e.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
+        <span class="series-title">${esc(e.title)}${e.year ? ` <small>(${e.year})</small>` : ""}</span>
+        <span class="own-flag">${owned ? "✅ owned" : "◻️ not owned"}</span>
+      </li>`;
+  });
+  const missingCount = cached.books.filter((e) => !ownedTitles.has(normTitle(e.title))).length;
+  seriesCache.set(book.id, { ...cached, missingCount });
+
+  el.innerHTML = `
+    <h3>Series: ${esc(cached.series.name)}</h3>
+    ${
+      items.length
+        ? `<p class="muted">${
+            missingCount
+              ? `You're missing ${missingCount} of ${cached.books.length} books in this series.`
+              : `You own all ${cached.books.length} books we found in this series. 🎉`
+          }</p><ul class="series-list">${items.join("")}</ul>`
+        : `<p class="muted">This book is part of “${esc(cached.series.name)}”, but we couldn't list the other entries.</p>`
+    }`;
+  renderShelf(); // refresh badges with the new missing count
+}
+
+// ---------- export / import ----------
+
+$("#export-btn").addEventListener("click", () => {
+  const blob = new Blob([db.exportJson()], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "shelfie-library.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+$("#import-btn").addEventListener("click", () => $("#import-input").click());
+$("#import-input").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    db.importJson(await file.text());
+    seriesCache.clear();
+    renderShelf();
+  } catch (err) {
+    alert("Import failed: " + err.message);
+  }
+});
+
+// ---------- init ----------
+renderShelf();

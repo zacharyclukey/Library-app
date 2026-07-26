@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f2a44" />
+  <title>Shelfie — Your Book Library</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>📚 Shelfie</h1>
+    <p class="tagline">Snap a photo of a book to add it to your library</p>
+  </header>
+
+  <nav class="shelf-tabs" role="tablist">
+    <button class="tab active" data-shelf="owned" role="tab" aria-selected="true">
+      Owned <span class="count" id="count-owned">0</span>
+    </button>
+    <button class="tab" data-shelf="tbr" role="tab" aria-selected="false">
+      To Be Read <span class="count" id="count-tbr">0</span>
+    </button>
+    <button class="tab" data-shelf="completed" role="tab" aria-selected="false">
+      Completed <span class="count" id="count-completed">0</span>
+    </button>
+  </nav>
+
+  <main>
+    <section id="book-list" class="book-list" aria-live="polite"></section>
+    <p id="empty-state" class="empty-state hidden">
+      No books on this shelf yet.<br />Tap <strong>＋ Add Book</strong> to scan one in.
+    </p>
+  </main>
+
+  <div class="fab-row">
+    <button id="add-book-btn" class="fab" title="Add a book">＋ Add Book</button>
+  </div>
+
+  <!-- ============ Add Book modal ============ -->
+  <dialog id="add-modal" class="modal">
+    <div class="modal-header">
+      <h2>Add a Book</h2>
+      <button class="close-btn" data-close="add-modal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="add-methods">
+      <button id="method-camera" class="method-btn">
+        <span class="method-icon">📷</span>
+        <span class="method-label">Live camera scan</span>
+        <span class="method-hint">Point at the barcode</span>
+      </button>
+      <button id="method-photo" class="method-btn">
+        <span class="method-icon">🖼️</span>
+        <span class="method-label">Take / upload a picture</span>
+        <span class="method-hint">Works with several books in one shot</span>
+      </button>
+      <input type="file" id="photo-input" accept="image/*" capture="environment" hidden />
+    </div>
+
+    <div id="scanner-area" class="scanner-area hidden">
+      <video id="scanner-video" playsinline muted></video>
+      <div class="scan-line"></div>
+      <button id="stop-scan-btn" class="secondary-btn">Stop camera</button>
+    </div>
+
+    <p id="scan-status" class="scan-status"></p>
+
+    <div class="manual-entry">
+      <h3>Or enter it manually</h3>
+      <form id="isbn-form" class="inline-form">
+        <input type="text" id="isbn-input" inputmode="numeric"
+               placeholder="ISBN (10 or 13 digits)" autocomplete="off" />
+        <button type="submit" class="primary-btn">Look up</button>
+      </form>
+      <form id="title-form" class="inline-form">
+        <input type="text" id="title-input" placeholder="Search by title / author" autocomplete="off" />
+        <button type="submit" class="primary-btn">Search</button>
+      </form>
+      <div id="search-results" class="search-results"></div>
+    </div>
+  </dialog>
+
+  <!-- ============ Confirm Book modal ============ -->
+  <dialog id="confirm-modal" class="modal">
+    <div class="modal-header">
+      <h2>Add to which shelf?</h2>
+      <button class="close-btn" data-close="confirm-modal" aria-label="Close">✕</button>
+    </div>
+    <div id="confirm-book" class="confirm-book"></div>
+    <div class="shelf-choice">
+      <button class="primary-btn" data-add-shelf="owned">📗 Owned</button>
+      <button class="primary-btn" data-add-shelf="tbr">🔖 To Be Read</button>
+      <button class="primary-btn" data-add-shelf="completed">✅ Completed</button>
+    </div>
+    <label class="also-own">
+      <input type="checkbox" id="also-own-checkbox" checked />
+      Also mark as owned (for To Be Read / Completed)
+    </label>
+  </dialog>
+
+  <!-- ============ Book detail modal ============ -->
+  <dialog id="detail-modal" class="modal">
+    <div class="modal-header">
+      <h2>Book Details</h2>
+      <button class="close-btn" data-close="detail-modal" aria-label="Close">✕</button>
+    </div>
+    <div id="detail-content"></div>
+  </dialog>
+
+  <footer class="app-footer">
+    <button id="export-btn" class="link-btn">Export library</button>
+    <input type="file" id="import-input" accept="application/json" hidden />
+    <button id="import-btn" class="link-btn">Import</button>
+    <span class="credit">Book data: Open Library &amp; Google Books</span>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
