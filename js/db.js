@@ -9,8 +9,9 @@
 //   editionKey,      // Open Library edition key, e.g. "OL22856696M"
 //   workKey,         // Open Library work key, e.g. "/works/OL82563W"
 //   coverUrl,
-//   shelf: "owned" | "tbr" | "completed",
+//   shelf: "owned" | "tbr" | "completed" | "wishlist",
 //   owned: true|false,        // tbr/completed books can also be owned copies
+//   rating: 1-5 | null,
 //   series: { name, position } | null,
 //   addedAt: ISO string
 // }

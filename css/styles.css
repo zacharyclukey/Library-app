@@ -48,10 +48,11 @@ body {
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 0.9rem;
-  padding: 0.7rem 0.25rem;
+  font-size: 0.82rem;
+  padding: 0.7rem 0.1rem;
   border-bottom: 3px solid transparent;
   cursor: pointer;
+  white-space: nowrap;
 }
 .tab.active {
   color: #fff;
@@ -332,6 +333,53 @@ body {
 .series-title { flex: 1; min-width: 0; }
 .own-flag { font-size: 0.75rem; white-space: nowrap; color: var(--muted); }
 li.owned .own-flag { color: var(--green); font-weight: 600; }
+
+/* ---------- ratings & wishlist ---------- */
+
+.card-rating {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: #f0b429;
+  letter-spacing: 0.1em;
+}
+
+.rate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+.rate-label { font-size: 0.85rem; color: var(--muted); }
+.star-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #c9cdd6;
+  padding: 0 0.05rem;
+}
+.star-btn.filled { color: #f0b429; }
+
+.amazon-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wish-btn {
+  background: #fff3d1;
+  color: var(--amber);
+  border: 1px solid #f0d489;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wish-btn:hover { filter: brightness(0.97); }
+.own-flag.wished { color: var(--amber); font-weight: 600; }
 
 /* ---------- shared library ---------- */
 

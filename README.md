@@ -13,8 +13,14 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Edition-accurate records** — the scanned ISBN identifies the *specific version*
   you own: publisher, publish date, physical format (hardcover/paperback), page
   count, ISBN-10/13, Open Library edition key, and that edition's cover art.
-- **Three shelves** — Owned, To Be Read, Completed. TBR/Completed books can also be
-  flagged as owned copies so series tracking sees them.
+- **Four shelves** — Owned, To Read, Completed, and Wishlist. TBR/Completed books
+  can also be flagged as owned copies so series tracking sees them.
+- **Wishlist with Amazon links** 🎁 — every book has a one-tap "View on Amazon"
+  link (direct product page via its ISBN when possible), and missing series
+  books can be wishlisted straight from the series view. (Amazon offers no free
+  API, so the app links out rather than syncing with Amazon wishlists.)
+- **Star ratings** ⭐ — rate any book 1–5 from its detail view; ratings show on
+  cards and sync to the household.
 - **Series awareness** — each owned book is checked against Open Library and Google
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked

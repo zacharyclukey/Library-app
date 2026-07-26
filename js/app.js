@@ -19,7 +19,20 @@ let currentShelf = "owned";
 let pendingBooks = []; // queue of looked-up books waiting for shelf choice
 const seriesCache = new Map(); // book.id -> { series, books } | null
 
-const SHELF_LABEL = { owned: "Owned", tbr: "To Be Read", completed: "Completed" };
+const SHELF_LABEL = { owned: "Owned", tbr: "To Be Read", completed: "Completed", wishlist: "Wishlist" };
+const SHELVES = ["owned", "tbr", "completed", "wishlist"];
+
+function starString(rating) {
+  return "★".repeat(rating) + "☆".repeat(5 - rating);
+}
+
+// ISBN-10 doubles as the ASIN for most print books, giving a direct
+// product link; otherwise fall back to an Amazon search.
+function amazonUrl(b) {
+  if (b.isbn10) return `https://www.amazon.com/dp/${b.isbn10}`;
+  const q = b.isbn13 ?? `${b.title} ${b.authors?.[0] ?? ""} book`;
+  return `https://www.amazon.com/s?k=${encodeURIComponent(q)}`;
+}
 
 // ---------- rendering ----------
 
@@ -31,7 +44,7 @@ function esc(s) {
 
 function renderShelf() {
   const books = db.getBooksOnShelf(currentShelf);
-  for (const shelf of ["owned", "tbr", "completed"]) {
+  for (const shelf of SHELVES) {
     $(`#count-${shelf}`).textContent = db.getBooksOnShelf(shelf).length;
   }
   emptyState.classList.toggle("hidden", books.length > 0);
@@ -58,6 +71,7 @@ function renderShelf() {
             ${esc([b.format, b.publisher, b.publishDate].filter(Boolean).join(" · "))}
           </p>
           <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
+          ${b.rating ? `<p class="card-rating" aria-label="Rated ${b.rating} of 5">${starString(b.rating)}</p>` : ""}
           <div class="badges">${seriesBadge}${moreBadge}</div>
         </div>
       </article>`;
@@ -282,7 +296,8 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     if (!book) return;
     const shelf = btn.dataset.addShelf;
     const alsoOwn = $("#also-own-checkbox").checked;
-    db.addBook({ ...book, shelf, owned: shelf === "owned" || alsoOwn });
+    const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
+    db.addBook({ ...book, shelf, owned });
     seriesCache.delete(book.id);
     renderShelf();
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
@@ -333,8 +348,19 @@ async function openDetail(id) {
         </table>
       </div>
     </div>
+    <div class="rate-row">
+      <span class="rate-label">Your rating:</span>
+      <span class="rate-stars">
+        ${[1, 2, 3, 4, 5]
+          .map((n) => `<button class="star-btn ${b.rating >= n ? "filled" : ""}" data-rate="${n}"
+                        aria-label="Rate ${n} of 5">${b.rating >= n ? "★" : "☆"}</button>`)
+          .join("")}
+      </span>
+      ${b.rating ? `<button class="link-btn" data-clear-rating>clear</button>` : ""}
+    </div>
     <div class="detail-actions">
-      ${["owned", "tbr", "completed"]
+      <a class="secondary-btn amazon-link" href="${esc(amazonUrl(b))}" target="_blank" rel="noopener">🛒 Amazon</a>
+      ${SHELVES
         .filter((s) => s !== b.shelf)
         .map((s) => `<button class="secondary-btn" data-move="${s}">Move to ${SHELF_LABEL[s]}</button>`)
         .join("")}
@@ -348,11 +374,26 @@ async function openDetail(id) {
 
   $("#detail-content").querySelectorAll("[data-move]").forEach((btn) =>
     btn.addEventListener("click", () => {
-      db.updateBook(id, { shelf: btn.dataset.move, owned: btn.dataset.move === "owned" ? true : b.owned });
+      const to = btn.dataset.move;
+      // Moving off the wishlist to owned/tbr/completed means you got the book.
+      const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
+      db.updateBook(id, { shelf: to, owned });
       detailModal.close();
       renderShelf();
     })
   );
+  $("#detail-content").querySelectorAll("[data-rate]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      db.updateBook(id, { rating: Number(btn.dataset.rate) });
+      renderShelf();
+      openDetail(id); // re-render the modal with the new rating
+    })
+  );
+  $("#detail-content").querySelector("[data-clear-rating]")?.addEventListener("click", () => {
+    db.updateBook(id, { rating: null });
+    renderShelf();
+    openDetail(id);
+  });
   $("#detail-content").querySelector("[data-delete]").addEventListener("click", () => {
     if (confirm(`Remove “${b.title}” from your library?`)) {
       db.removeBook(id);
@@ -392,13 +433,22 @@ async function renderSeriesSection(book) {
   }
 
   const ownedTitles = new Set(db.getOwnedBooks().map((b) => normTitle(b.title)));
-  const items = cached.books.map((e) => {
+  const wishTitles = new Set(
+    db.getBooksOnShelf("wishlist").map((b) => normTitle(b.title))
+  );
+  const items = cached.books.map((e, i) => {
     const owned = ownedTitles.has(normTitle(e.title));
+    const wished = !owned && wishTitles.has(normTitle(e.title));
+    const flag = owned
+      ? `<span class="own-flag">✅ owned</span>`
+      : wished
+        ? `<span class="own-flag wished">🎁 wishlisted</span>`
+        : `<button class="wish-btn" data-wish-idx="${i}">＋ Wishlist</button>`;
     return `
       <li class="${owned ? "owned" : "missing"}">
         ${e.coverUrl ? `<img src="${esc(e.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
         <span class="series-title">${esc(e.title)}${e.year ? ` <small>(${e.year})</small>` : ""}</span>
-        <span class="own-flag">${owned ? "✅ owned" : "◻️ not owned"}</span>
+        ${flag}
       </li>`;
   });
   const missingCount = cached.books.filter((e) => !ownedTitles.has(normTitle(e.title))).length;
@@ -415,6 +465,27 @@ async function renderSeriesSection(book) {
           }</p><ul class="series-list">${items.join("")}</ul>`
         : `<p class="muted">This book is part of “${esc(cached.series.name)}”, but we couldn't list the other entries.</p>`
     }`;
+
+  el.querySelectorAll("[data-wish-idx]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const e = cached.books[Number(btn.dataset.wishIdx)];
+      db.addBook({
+        id: "ol:" + e.workKey.replace("/works/", ""),
+        title: e.title,
+        authors: e.authors,
+        workKey: e.workKey,
+        coverUrl: e.coverUrl?.replace("-S.jpg", "-M.jpg") ?? null,
+        isbn13: null, isbn10: null, publisher: null, publishDate: null,
+        pageCount: null, format: null, editionKey: null,
+        series: { name: cached.series.name, position: null },
+        shelf: "wishlist",
+        owned: false,
+      });
+      renderSeriesSection(book); // re-render to show the 🎁 flag
+      renderShelf();
+    })
+  );
+
   renderShelf(); // refresh badges with the new missing count
 }
 
