@@ -21,6 +21,10 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   ✅ owned / ◻️ not owned.
 - **Your data stays yours** — everything is stored in your browser's localStorage,
   with JSON export/import for backup or moving devices.
+- **Optional shared library** 👩‍❤️‍👨 — link two or more phones into one live
+  "household" collection (scan on one phone, it appears on the other; series
+  tracking counts everyone's books). Runs on Firebase's free tier with a
+  one-time setup — see [SETUP-SYNC.md](SETUP-SYNC.md).
 
 ## Running it
 

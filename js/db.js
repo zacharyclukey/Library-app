@@ -15,6 +15,8 @@
 //   addedAt: ISO string
 // }
 
+import * as sync from "./sync.js";
+
 const STORAGE_KEY = "shelfie.library.v1";
 
 function load() {
@@ -54,6 +56,7 @@ export function addBook(book) {
     books.push({ ...book, addedAt: new Date().toISOString() });
   }
   save(books);
+  sync.upsertRemote(books[existing >= 0 ? existing : books.length - 1]);
 }
 
 export function updateBook(id, patch) {
@@ -62,11 +65,19 @@ export function updateBook(id, patch) {
   if (i >= 0) {
     books[i] = { ...books[i], ...patch };
     save(books);
+    sync.upsertRemote(books[i]);
   }
 }
 
 export function removeBook(id) {
   save(load().filter((b) => b.id !== id));
+  sync.removeRemote(id);
+}
+
+// Replace the local library with the household's cloud state. Called by the
+// sync layer only — must not write back through the sync hooks.
+export function applyRemote(books) {
+  save(books);
 }
 
 // Every book the user owns a copy of: the Owned shelf plus any
@@ -83,4 +94,5 @@ export function importJson(text) {
   const data = JSON.parse(text);
   if (!Array.isArray(data)) throw new Error("Invalid library file");
   save(data);
+  data.forEach((b) => sync.upsertRemote(b));
 }

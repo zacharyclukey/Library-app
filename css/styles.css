@@ -333,6 +333,26 @@ body {
 .own-flag { font-size: 0.75rem; white-space: nowrap; color: var(--muted); }
 li.owned .own-flag { color: var(--green); font-weight: 600; }
 
+/* ---------- shared library ---------- */
+
+.household-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--accent-soft);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius);
+  padding: 0.7rem;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+.sync-error { color: var(--red); font-size: 0.85rem; }
+.sync-dot { color: var(--green); font-size: 0.9em; }
+.sync-dot.error { color: var(--red); }
+#sync-content p { font-size: 0.88rem; line-height: 1.5; }
+#sync-content a { color: var(--accent); }
+
 /* ---------- footer ---------- */
 
 .app-footer {

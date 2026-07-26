@@ -1,5 +1,6 @@
 import * as db from "./db.js";
 import * as api from "./api.js";
+import * as sync from "./sync.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 
 // ---------- element handles ----------
@@ -442,5 +443,119 @@ $("#import-input").addEventListener("change", async (e) => {
   }
 });
 
+// ---------- shared library (sync) ----------
+
+const syncModal = $("#sync-modal");
+let syncError = null;
+
+function onRemoteBooks(books) {
+  db.applyRemote(books);
+  renderShelf();
+}
+
+function onSyncError(err) {
+  syncError = err.message;
+  updateSyncIndicator();
+  if (syncModal.open) renderSyncModal();
+}
+
+function updateSyncIndicator() {
+  const dot = $("#sync-dot");
+  dot.classList.toggle("hidden", !sync.isActive());
+  dot.classList.toggle("error", !!syncError);
+  dot.title = syncError ? "Sync error: " + syncError : "Sync on";
+}
+
+$("#sync-btn").addEventListener("click", () => {
+  renderSyncModal();
+  syncModal.showModal();
+});
+
+function renderSyncModal() {
+  const el = $("#sync-content");
+
+  if (!sync.isConfigured()) {
+    el.innerHTML = `
+      <p>A shared library lets two (or more) phones see and edit the <strong>same
+      live collection</strong> — great for households: either of you scans a book
+      and it appears on both phones, and the series checker counts everyone's books.</p>
+      <p>It needs a one-time, free Firebase setup (about 5 minutes) by whoever
+      owns the app. Follow the steps in
+      <a href="https://github.com/zacharyclukey/Library-app/blob/claude/book-library-series-app-jsqsp7/SETUP-SYNC.md"
+         target="_blank" rel="noopener">SETUP-SYNC.md</a>,
+      then this screen will offer Create / Join options.</p>`;
+    return;
+  }
+
+  const code = sync.currentHousehold();
+  if (code && sync.isActive()) {
+    el.innerHTML = `
+      <p>✅ Sharing is <strong>on</strong>. This phone is part of household:</p>
+      <p class="household-code">${code}</p>
+      <p class="muted">Anyone who opens the app and joins with this code shares
+      the same library. Share it only with people you trust — it's the only key.</p>
+      ${syncError ? `<p class="sync-error">⚠️ ${syncError}</p>` : ""}
+      <div class="detail-actions">
+        <button id="copy-code-btn" class="secondary-btn">Copy code</button>
+        <button id="leave-btn" class="danger-btn">Leave shared library</button>
+      </div>`;
+    $("#copy-code-btn").addEventListener("click", () =>
+      navigator.clipboard?.writeText(code)
+    );
+    $("#leave-btn").addEventListener("click", () => {
+      if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
+        sync.leave();
+        syncError = null;
+        updateSyncIndicator();
+        renderSyncModal();
+      }
+    });
+    return;
+  }
+
+  el.innerHTML = `
+    <p>Create a shared library and give the code to your partner, or enter a
+    code someone shared with you. Books already on this phone are merged in —
+    nothing is lost.</p>
+    ${syncError ? `<p class="sync-error">⚠️ ${syncError}</p>` : ""}
+    <div class="detail-actions">
+      <button id="create-household-btn" class="primary-btn">Create shared library</button>
+    </div>
+    <form id="join-form" class="inline-form" style="margin-top:0.8rem">
+      <input type="text" id="join-code-input" placeholder="Enter a household code"
+             autocomplete="off" autocapitalize="none" />
+      <button type="submit" class="primary-btn">Join</button>
+    </form>`;
+
+  const activate = async (code) => {
+    syncError = null;
+    try {
+      await sync.join(code, db.getAllBooks(), onRemoteBooks, onSyncError);
+    } catch (err) {
+      syncError = err.message;
+    }
+    updateSyncIndicator();
+    renderSyncModal();
+  };
+  $("#create-household-btn").addEventListener("click", () => activate(sync.generateCode()));
+  $("#join-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const code = $("#join-code-input").value;
+    if (code.trim()) activate(code);
+  });
+}
+
+async function initSync() {
+  if (sync.isConfigured() && sync.currentHousehold()) {
+    try {
+      await sync.start(onRemoteBooks, onSyncError);
+    } catch (err) {
+      syncError = err.message;
+    }
+    updateSyncIndicator();
+  }
+}
+
 // ---------- init ----------
 renderShelf();
+initSync();

@@ -112,8 +112,18 @@
     <div id="detail-content"></div>
   </dialog>
 
+  <!-- ============ Shared library (sync) modal ============ -->
+  <dialog id="sync-modal" class="modal">
+    <div class="modal-header">
+      <h2>Shared Library</h2>
+      <button class="close-btn" data-close="sync-modal" aria-label="Close">✕</button>
+    </div>
+    <div id="sync-content"></div>
+  </dialog>
+
   <footer class="app-footer">
-    <button id="export-btn" class="link-btn">Export library</button>
+    <button id="sync-btn" class="link-btn">Shared library <span id="sync-dot" class="sync-dot hidden">●</span></button>
+    <button id="export-btn" class="link-btn">Export</button>
     <input type="file" id="import-input" accept="application/json" hidden />
     <button id="import-btn" class="link-btn">Import</button>
     <span class="credit">Book data: Open Library &amp; Google Books</span>
