@@ -26,12 +26,26 @@ function starString(rating) {
   return "★".repeat(rating) + "☆".repeat(5 - rating);
 }
 
-// ISBN-10 doubles as the ASIN for most print books, giving a direct
-// product link; otherwise fall back to an Amazon search.
-function amazonUrl(b) {
-  if (b.isbn10) return `https://www.amazon.com/dp/${b.isbn10}`;
-  const q = b.isbn13 ?? `${b.title} ${b.authors?.[0] ?? ""} book`;
-  return `https://www.amazon.com/s?k=${encodeURIComponent(q)}`;
+// Outbound "find this book" links, built from the ISBN when we have one
+// (which finds the exact edition) or a title+author search otherwise.
+// ISBN-10 doubles as the ASIN for most print books, giving Amazon a
+// direct product page.
+function storeLinks(b) {
+  const isbn = b.isbn13 ?? b.isbn10;
+  const q = encodeURIComponent(isbn ?? `${b.title} ${b.authors?.[0] ?? ""}`);
+  return [
+    ["🛒 Amazon", b.isbn10
+      ? `https://www.amazon.com/dp/${b.isbn10}`
+      : `https://www.amazon.com/s?k=${q}`],
+    ["📕 Barnes & Noble", `https://www.barnesandnoble.com/s/${q}`],
+    ["🏪 Bookshop.org", `https://bookshop.org/search?keywords=${q}`],
+    ["♻️ ThriftBooks", `https://www.thriftbooks.com/browse/?b.search=${q}`],
+    ["📜 AbeBooks", isbn
+      ? `https://www.abebooks.com/servlet/SearchResults?isbn=${isbn}`
+      : `https://www.abebooks.com/servlet/SearchResults?kn=${q}`],
+    ["🏛️ Library (WorldCat)", `https://search.worldcat.org/search?q=${q}`],
+    ["⭐ Goodreads", `https://www.goodreads.com/search?q=${q}`],
+  ];
 }
 
 // ---------- rendering ----------
@@ -358,8 +372,16 @@ async function openDetail(id) {
       </span>
       ${b.rating ? `<button class="link-btn" data-clear-rating>clear</button>` : ""}
     </div>
+    <div class="find-section">
+      <h3>Find this book</h3>
+      <div class="store-links">
+        ${storeLinks(b)
+          .map(([label, url]) =>
+            `<a class="store-link" href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`)
+          .join("")}
+      </div>
+    </div>
     <div class="detail-actions">
-      <a class="secondary-btn amazon-link" href="${esc(amazonUrl(b))}" target="_blank" rel="noopener">🛒 Amazon</a>
       ${SHELVES
         .filter((s) => s !== b.shelf)
         .map((s) => `<button class="secondary-btn" data-move="${s}">Move to ${SHELF_LABEL[s]}</button>`)

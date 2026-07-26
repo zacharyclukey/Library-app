@@ -361,11 +361,23 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 }
 .star-btn.filled { color: #f0b429; }
 
-.amazon-link {
-  text-decoration: none;
+.find-section { margin-bottom: 0.9rem; }
+.find-section h3 { margin: 0 0 0.45rem; font-size: 0.95rem; }
+.store-links { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.store-link {
   display: inline-flex;
   align-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid #d3d9e6;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
 }
+.store-link:hover { background: #dde3ef; }
 
 .wish-btn {
   background: #fff3d1;
