@@ -34,7 +34,7 @@ let memberFilter = "me"; // "me" | "all" | a profile name
 let searchQuery = "";
 
 const emptyFilter = () =>
-  ({ genre: null, length: null, series: null, age: null, format: null, rated: null });
+  ({ genre: null, pages: null, series: null, age: null, format: null, rated: null });
 let shelfFilter = emptyFilter();
 let shelfSort = "added";
 
@@ -413,6 +413,62 @@ function chipGroup(label, options, current, onPick) {
   return wrap;
 }
 
+// Dual-thumb page-count slider. Native range inputs are single-thumb, so two
+// are stacked with only their thumbs clickable and a filled bar drawn between.
+function pageRangeSlider(current, onChange) {
+  const { min, max, step } = flt.PAGE_RANGE;
+  const value = current ?? flt.fullPageRange();
+
+  const wrap = document.createElement("div");
+  wrap.className = "filter-group";
+  wrap.innerHTML = `
+    <span class="filter-label">Length <span class="range-value"></span></span>
+    <div class="range-wrap">
+      <div class="range-track"><div class="range-fill"></div></div>
+      <input type="range" class="range-min" min="${min}" max="${max}" step="${step}"
+             value="${value.min}" aria-label="Minimum pages" />
+      <input type="range" class="range-max" min="${min}" max="${max}" step="${step}"
+             value="${value.max}" aria-label="Maximum pages" />
+    </div>
+    <div class="range-ends"><span>${min}</span><span>${max}+</span></div>
+    <p class="range-hint">Books with no page count are hidden while this is narrowed.</p>`;
+
+  const lo = wrap.querySelector(".range-min");
+  const hi = wrap.querySelector(".range-max");
+  const fill = wrap.querySelector(".range-fill");
+  const label = wrap.querySelector(".range-value");
+
+  const paint = () => {
+    const a = Number(lo.value);
+    const b = Number(hi.value);
+    fill.style.left = `${(a / max) * 100}%`;
+    fill.style.right = `${100 - (b / max) * 100}%`;
+    label.textContent = flt.pageRangeLabel({ min: a, max: b });
+    wrap.classList.toggle("narrowed", !flt.isFullPageRange({ min: a, max: b }));
+  };
+
+  const clamp = (moved) => {
+    // Keep a gap so the thumbs can never sit on top of each other.
+    if (Number(lo.value) > Number(hi.value) - step) {
+      if (moved === lo) lo.value = Math.max(min, Number(hi.value) - step);
+      else hi.value = Math.min(max, Number(lo.value) + step);
+    }
+  };
+
+  [lo, hi].forEach((input) => {
+    input.addEventListener("input", () => {
+      clamp(input);
+      paint();
+    });
+    input.addEventListener("change", () =>
+      onChange({ min: Number(lo.value), max: Number(hi.value) })
+    );
+  });
+
+  paint();
+  return wrap;
+}
+
 function renderFilterPanel() {
   const panel = $("#filter-panel");
   panel.innerHTML = "";
@@ -429,7 +485,12 @@ function renderFilterPanel() {
       chipGroup("Genre", genres.map((g) => [g, g]), shelfFilter.genre, set("genre"))
     );
   }
-  panel.appendChild(chipGroup("Length", flt.LENGTH_OPTIONS, shelfFilter.length, set("length")));
+  panel.appendChild(
+    pageRangeSlider(shelfFilter.pages, (range) => {
+      shelfFilter.pages = flt.isFullPageRange(range) ? null : range;
+      renderShelf();
+    })
+  );
   panel.appendChild(chipGroup("Series", flt.SERIES_OPTIONS, shelfFilter.series, set("series")));
   panel.appendChild(chipGroup("Published", flt.AGE_OPTIONS, shelfFilter.age, set("age")));
   const formatOptions = flt.FORMAT_OPTIONS.filter(
@@ -1034,7 +1095,7 @@ async function renderSeriesSection(book) {
 
 // ---------- discover (recommendations) ----------
 
-let recFilter = { genre: null, length: null, age: null };
+let recFilter = { genre: null, pages: null, age: null };
 let recsCache = null; // { key, recs } — keyed on filters + library size
 
 $("#discover-btn").addEventListener("click", () => showScreen("discover"));
@@ -1047,16 +1108,20 @@ function renderDiscover() {
     recFilter[key] = value;
     renderDiscover();
   };
+  const results = document.createElement("div");
   const filterBox = document.createElement("div");
   filterBox.className = "rec-filters";
   filterBox.appendChild(
     chipGroup("Genre", flt.GENRES.map(([g]) => [g, g]), recFilter.genre, set("genre"))
   );
-  filterBox.appendChild(chipGroup("Length", flt.LENGTH_OPTIONS, recFilter.length, set("length")));
+  filterBox.appendChild(
+    pageRangeSlider(recFilter.pages, (range) => {
+      recFilter.pages = flt.isFullPageRange(range) ? null : range;
+      loadRecs(results);
+    })
+  );
   filterBox.appendChild(chipGroup("Published", flt.AGE_OPTIONS, recFilter.age, set("age")));
   el.appendChild(filterBox);
-
-  const results = document.createElement("div");
   el.appendChild(results);
   loadRecs(results);
 }
@@ -1091,8 +1156,8 @@ async function loadRecs(container) {
 // candidates are then constrained to the filter too. Results come from
 // Open Library ranked by community rating.
 async function buildRecommendations(books, f) {
-  const focusFilter = { ...emptyFilter(), genre: f.genre, length: f.length, age: f.age };
-  const anyFilter = !!(f.genre || f.length || f.age);
+  const focusFilter = { ...emptyFilter(), genre: f.genre, pages: f.pages, age: f.age };
+  const anyFilter = !!(f.genre || f.pages || f.age);
   const inFocus = (b) => flt.matchesFilter(b, focusFilter, { myRating: myRating(b) });
   const focusBoost = (b) => (anyFilter && inFocus(b) ? 3 : 1);
 
@@ -1141,7 +1206,7 @@ async function buildRecommendations(books, f) {
   await Promise.allSettled(
     queries.map(async ({ q, reason }) => {
       for (const r of await api.searchRanked(q, 12)) {
-        if (f.length && !flt.lengthMatches(r.pages, f.length)) continue;
+        if (!flt.pagesMatch(r.pages, f.pages)) continue;
         if (f.age && !flt.ageMatches(r.year, f.age)) continue;
         const t = normTitle(r.title);
         if (!have.has(t) && !found.has(t)) found.set(t, { ...r, reason });

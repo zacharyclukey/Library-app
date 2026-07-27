@@ -59,14 +59,38 @@ export function yearOf(book) {
 }
 
 // ---------- filter predicates ----------
-// A filter object: { genre, length, series, age, format, rated } — null
-// fields are inactive. Books missing the data a filter needs don't match.
+// A filter object: { genre, pages, series, age, format, rated }. Null chip
+// fields and a full page range are inactive. Books missing the data a filter
+// needs don't match.
 
-export const LENGTH_OPTIONS = [
-  ["short", "Short (<300 pp)"],
-  ["medium", "Medium (300–500 pp)"],
-  ["long", "Long (500+ pp)"],
-];
+// Page-count range for the length slider. The top of the scale means "and
+// up", so a book of 1,400 pages still matches a range ending at the cap.
+export const PAGE_RANGE = { min: 0, max: 1200, step: 25 };
+
+export function fullPageRange() {
+  return { min: PAGE_RANGE.min, max: PAGE_RANGE.max };
+}
+
+export function isFullPageRange(r) {
+  return !r || (r.min <= PAGE_RANGE.min && r.max >= PAGE_RANGE.max);
+}
+
+export function pageRangeLabel(r) {
+  if (isFullPageRange(r)) return "Any length";
+  const top = r.max >= PAGE_RANGE.max ? "any" : `${r.max}`;
+  if (r.min <= PAGE_RANGE.min) return `Under ${r.max} pages`;
+  if (top === "any") return `${r.min}+ pages`;
+  return `${r.min}–${r.max} pages`;
+}
+
+export function pagesMatch(pages, r) {
+  if (isFullPageRange(r)) return true;
+  if (pages == null) return false; // unknown length can't be judged
+  if (pages < r.min) return false;
+  if (r.max < PAGE_RANGE.max && pages > r.max) return false;
+  return true;
+}
+
 export const SERIES_OPTIONS = [
   ["series", "In a series"],
   ["standalone", "Standalone"],
@@ -87,14 +111,6 @@ export const RATED_OPTIONS = [
   ["unrated", "Unrated"],
 ];
 
-export function lengthMatches(pages, want) {
-  if (pages == null) return false;
-  if (want === "short") return pages < 300;
-  if (want === "medium") return pages >= 300 && pages <= 500;
-  if (want === "long") return pages > 500;
-  return true;
-}
-
 export function ageMatches(year, want) {
   if (year == null) return false;
   if (want === "new") return year >= CURRENT_YEAR - 2;
@@ -106,7 +122,7 @@ export function ageMatches(year, want) {
 // opts.myRating: the current profile's rating for the book (for `rated`).
 export function matchesFilter(book, f, opts = {}) {
   if (f.genre && !genresOf(book).includes(f.genre)) return false;
-  if (f.length && !lengthMatches(book.pageCount, f.length)) return false;
+  if (!pagesMatch(book.pageCount, f.pages)) return false;
   if (f.series === "series" && !book.series?.name) return false;
   if (f.series === "standalone" && book.series?.name) return false;
   if (f.age && !ageMatches(yearOf(book), f.age)) return false;
@@ -120,7 +136,8 @@ export function matchesFilter(book, f, opts = {}) {
 }
 
 export function activeFilterCount(f) {
-  return ["genre", "length", "series", "age", "format", "rated"].filter((k) => f[k]).length;
+  const chips = ["genre", "series", "age", "format", "rated"].filter((k) => f[k]).length;
+  return chips + (isFullPageRange(f.pages) ? 0 : 1);
 }
 
 // ---------- sort orders ----------
