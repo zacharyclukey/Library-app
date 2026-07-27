@@ -742,8 +742,8 @@ body {
   border: 1px solid var(--line);
   color: var(--ink-soft);
   border-radius: 999px;
-  padding: 0.32rem 0.78rem;
-  font-size: 0.78rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.79rem;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
@@ -758,6 +758,17 @@ body {
 }
 .filter-chip.big { font-size: 0.9rem; padding: 0.5rem 1rem; }
 .profile-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.shelf-hero {
+  max-width: 728px;
+  width: calc(100% - 2rem);
+  margin: 0.9rem auto -0.2rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.01em;
+}
+.shelf-hero:empty { display: none; }
+.shelf-hero strong { font-family: var(--serif); font-weight: 600; color: var(--ink); }
 
 .shelf-summary {
   margin: 0.7rem 0 0;
@@ -816,7 +827,11 @@ img.cover {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Fade over the coloured fallback instead of popping in. */
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
+img.cover.loaded { opacity: 1; }
 img.cover.missing { display: none; }
 
 /* ============================================================
@@ -922,8 +937,8 @@ img.cover.missing { display: none; }
 .badges { margin-top: 0.45rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .badges:empty { display: none; }
 .badge {
-  font-size: 0.68rem;
-  padding: 0.16rem 0.55rem;
+  font-size: 0.69rem;
+  padding: 0.18rem 0.58rem;
   border-radius: 999px;
   white-space: nowrap;
   border: 1px solid transparent;
@@ -1019,6 +1034,24 @@ img.cover.missing { display: none; }
 .nudge-stars button:hover { color: var(--gold); }
 
 #list-sentinel { height: 1px; }
+
+/* Cards rise in as each chunk lands, lightly staggered. */
+.grid-book.enter, .book-card.enter {
+  animation: card-in 0.28s ease-out both;
+  animation-delay: calc(var(--i, 0) * 18ms);
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* A small celebration on the shelf that just gained a book. */
+.count.pop { animation: count-pop 0.5s cubic-bezier(0.3, 1.4, 0.5, 1); }
+@keyframes count-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.5); background: var(--gold); color: #3a2a00; }
+  100% { transform: scale(1); }
+}
 
 /* ============================================================
    Toasts
@@ -1257,7 +1290,7 @@ img.cover.missing { display: none; }
 /* The book page presents as a phone-style bottom sheet. */
 .modal.sheet {
   margin: auto auto 0;
-  width: min(100vw, 640px);
+  width: min(100vw, 620px);
   max-height: 92vh;
   border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding-bottom: calc(1.35rem + env(safe-area-inset-bottom, 0px));
@@ -1389,7 +1422,7 @@ img.cover.missing { display: none; }
 .scan-status { min-height: 1.2em; font-size: 0.85rem; color: var(--ink-soft); margin: 0.7rem 0 0; }
 
 .manual-entry { margin-top: 1.1rem; border-top: 1px solid var(--line); padding-top: 0.9rem; }
-.manual-entry h3 { margin: 0 0 0.6rem; font-size: 0.95rem; }
+.manual-entry h3 { margin: 0 0 0.6rem; font-family: var(--serif); font-size: 1rem; }
 .inline-form { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
 .inline-form input {
   flex: 1;
@@ -1549,7 +1582,7 @@ img.cover.missing { display: none; }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
 .series-section { margin-top: 1.1rem; border-top: 1px solid var(--line); padding-top: 0.85rem; }
-.series-section h3 { margin: 0 0 0.45rem; font-size: 1rem; }
+.series-section h3 { margin: 0 0 0.45rem; font-family: var(--serif); font-size: 1rem; }
 .series-loading { color: var(--muted); font-size: 0.85rem; }
 .series-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.4rem; }
 .series-list li {
@@ -1614,8 +1647,6 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 }
 .star-btn.filled { color: var(--gold); }
 
-.find-section { margin-bottom: 1rem; }
-.find-section h3 { margin: 0 0 0.5rem; font-size: 1rem; }
 .store-links { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .store-link {
   display: inline-flex;

@@ -93,6 +93,9 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   aesthetic sets its own hand via `--icon-stroke` / `--icon-cap`: Reading Room
   soft and heavier, Cottage rounded, Dark Academia finely engraved, Modern thin
   and crisp (see `js/icons.js`).
+- **Quiet motion** — covers fade in over their coloured fallback, cards rise in
+  as each chunk loads, and the shelf you just added to gives its count a small
+  pop. All of it respects `prefers-reduced-motion`.
 - **Built for big shelves** 📚 — cards render in chunks as you scroll (a
   300-book shelf paints as fast as a small one), an A–Z rail jumps you through
   the list when sorted by title or author, and search is debounced.

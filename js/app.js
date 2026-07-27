@@ -136,6 +136,7 @@ function coverHtml(b) {
       </div>
       ${b.coverUrl
         ? `<img class="cover" src="${esc(b.coverUrl)}" alt="" loading="lazy"
+             onload="this.classList.add('loaded')"
              onerror="this.classList.add('missing')" />`
         : ""}
     </div>`;
@@ -396,6 +397,30 @@ function renderShelf() {
   renderChunk();
   renderAzRail(books);
   renderNudge();
+  renderHero();
+}
+
+// A quiet line of context at the top of the shelves — who's reading, and
+// what's actually in the library right now.
+function renderHero() {
+  const el = $("#shelf-hero");
+  const me = currentProfile();
+  const all = db.getAllBooks();
+  if (!me || !all.length) {
+    el.textContent = "";
+    return;
+  }
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const reading = all.filter((b) => b.reading).length;
+  const finished = db.getBooksOnShelf("completed").length;
+  const facts = [
+    reading ? `${reading} in progress` : null,
+    finished ? `${finished} finished` : null,
+  ].filter(Boolean);
+  el.innerHTML = `<strong>${greeting}, ${esc(me)}</strong>${
+    facts.length ? " · " + esc(facts.join(" · ")) : ""
+  }`;
 }
 
 // Cards are appended in chunks as you scroll, so a huge library opens as
@@ -408,10 +433,16 @@ const flippedIds = new Set();
 function renderChunk() {
   const next = renderQueue.splice(0, CHUNK);
   if (!next.length) return;
+  const from = bookList.children.length;
   bookList.insertAdjacentHTML(
     "beforeend",
     next.map((b) => (viewMode === "grid" ? gridCard(b, renderShowNames) : listCard(b, renderShowNames))).join("")
   );
+  for (let i = from; i < bookList.children.length; i++) {
+    const card = bookList.children[i];
+    card.classList.add("enter");
+    card.style.setProperty("--i", Math.min(i - from, 12)); // cap the stagger
+  }
   next.forEach((b) => {
     if (flippedIds.has(b.id)) {
       bookList.querySelector(`[data-id="${CSS.escape(b.id)}"] .flip`)?.classList.add("flipped");
@@ -1138,6 +1169,10 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     seriesCache.delete(book.id);
     renderShelf();
     navigator.vibrate?.(15);
+    const tab = document.querySelector(`.tab[data-shelf="${shelf}"] .count`);
+    tab?.classList.remove("pop");
+    void tab?.offsetWidth; // restart the animation
+    tab?.classList.add("pop");
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
     toast(`Added to ${SHELF_LABEL[shelf]}`, {
       actionLabel: "Undo",
@@ -1197,7 +1232,12 @@ bookList.addEventListener("click", (e) => {
     const to = move.dataset.qaMove;
     undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-      db.updateBook(id, { shelf: to, owned, reading: to === "completed" ? false : b.reading ?? false });
+      db.updateBook(id, {
+        shelf: to,
+        owned,
+        reading: to === "completed" ? false : b.reading ?? false,
+        finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
+      });
     });
     flippedIds.delete(id);
     renderShelf();
@@ -1402,8 +1442,9 @@ async function openDetail(id) {
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
       // Finishing a book (or shelving it away) ends the current read.
       const reading = to === "tbr" || to === "owned" ? b.reading ?? false : false;
+      const finishedAt = to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null;
       undoable(`Moved to ${SHELF_LABEL[to]}`, b, () =>
-        db.updateBook(id, { shelf: to, owned, reading })
+        db.updateBook(id, { shelf: to, owned, reading, finishedAt })
       );
       detailModal.close();
       renderShelf();
