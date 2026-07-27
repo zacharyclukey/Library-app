@@ -99,9 +99,11 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Built for big shelves** 📚 — cards render in chunks as you scroll (a
   300-book shelf paints as fast as a small one), an A–Z rail jumps you through
   the list when sorted by title or author, and search is debounced.
-- **Group by series** 🗂️ — a toggle in the filter panel collects each shelf into
-  its series (ordered by book number, with standalones last), so a big library
-  reads as collections rather than a wall of covers.
+- **Group by series (optional)** 🗂️ — **off by default**; a toggle in the filter
+  panel collects each shelf into its series (ordered by book number, with
+  standalones last), so a big library can read as collections rather than a wall
+  of covers. Tap it again — or Clear all filters — to go back to a flat shelf.
+  Your choice is remembered per device.
 - **Your reading** 📊 — tap the greeting (or Settings) for totals, books and
   pages finished this year with a per-month bar row, most-read authors, and the
   genres on your shelves. All derived from data already on the shelves.

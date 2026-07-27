@@ -63,7 +63,8 @@ const emptyFilter = () =>
      status: null, content: null, spice: null, language: null });
 let shelfFilter = emptyFilter();
 let shelfSort = "added";
-let groupBySeries = false;
+const GROUP_KEY = "shelfie.groupSeries.v1";
+let groupBySeries = localStorage.getItem(GROUP_KEY) === "1";
 
 function currentProfile() {
   return localStorage.getItem(PROFILE_KEY);
@@ -978,6 +979,7 @@ function renderFilterPanel() {
   panel.appendChild(
     chipGroup("Group", [["series", "📚 By series"]], groupBySeries ? "series" : null, (v) => {
       groupBySeries = !!v;
+      localStorage.setItem(GROUP_KEY, groupBySeries ? "1" : "0");
       renderFilterPanel();
       renderShelf();
     })
@@ -1009,6 +1011,7 @@ function renderFilterPanel() {
     shelfFilter = emptyFilter();
     shelfSort = "added";
     groupBySeries = false;
+    localStorage.setItem(GROUP_KEY, "0");
     renderFilterPanel();
     renderShelf();
   });
