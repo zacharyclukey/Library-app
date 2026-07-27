@@ -34,7 +34,8 @@ let memberFilter = "me"; // "me" | "all" | a profile name
 let searchQuery = "";
 
 const emptyFilter = () =>
-  ({ genre: null, pages: null, series: null, age: null, format: null, rated: null, status: null });
+  ({ genre: null, pages: null, series: null, age: null, format: null, rated: null,
+     status: null, content: null, spice: null });
 let shelfFilter = emptyFilter();
 let shelfSort = "added";
 
@@ -74,6 +75,12 @@ function trackMedium() {
 // Defaults to on (losing the library to cache cleanup is the worse
 // surprise); the Settings toggle stops future requests. Browsers offer no
 // API to revoke an already-granted protection, so the UI says so.
+const CONTENT_KEY = "shelfie.trackContent.v1";
+
+function trackContent() {
+  return localStorage.getItem(CONTENT_KEY) === "1";
+}
+
 const PERSIST_KEY = "shelfie.persistStorage.v1";
 
 function persistPref() {
@@ -268,6 +275,9 @@ function gridCard(b, showNames) {
         ${b.reading ? `<span class="mini-badge reading" title="Currently reading">📖</span>` : ""}
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
         ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${MEDIUM_ICON[b.medium]}</span>` : ""}
+        ${trackContent() && b.spice ? `<span class="mini-badge spice" title="Spice ${b.spice} of 5">🌶️${b.spice}</span>` : ""}
+        ${trackContent() && !b.spice && ["mature", "explicit"].includes(b.content) ? `<span class="mini-badge mature-tag">18+</span>` : ""}
+        ${trackContent() && b.content === "kids" ? `<span class="mini-badge kids-tag">🧸</span>` : ""}
         ${currentShelf === "owned" && b.shelf !== "owned"
           ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[b.shelf])}">${SHELF_ICON[b.shelf]}</span>`
           : ""}
@@ -305,6 +315,8 @@ function listCard(b, showNames) {
             ? `<span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>`
             : ""}
           ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
+          ${trackContent() && b.content ? `<span class="badge content-badge">${flt.CONTENT_LABEL[b.content] ?? esc(b.content)}</span>` : ""}
+          ${trackContent() && b.spice ? `<span class="badge spice-badge">${"🌶️".repeat(b.spice)}</span>` : ""}
           ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
           ${seriesBadge}${moreBadge}
         </div>
@@ -519,6 +531,10 @@ function renderFilterPanel() {
   panel.appendChild(chipGroup("Rating", flt.RATED_OPTIONS, shelfFilter.rated, set("rated")));
   if (currentShelf === "tbr" || currentShelf === "owned") {
     panel.appendChild(chipGroup("Status", flt.STATUS_OPTIONS, shelfFilter.status, set("status")));
+  }
+  if (trackContent()) {
+    panel.appendChild(chipGroup("Content", flt.CONTENT_OPTIONS, shelfFilter.content, set("content")));
+    panel.appendChild(chipGroup("Spice", flt.SPICE_OPTIONS, shelfFilter.spice, set("spice")));
   }
 
   const sortWrap = document.createElement("div");
@@ -843,6 +859,7 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     const alsoOwn = $("#also-own-checkbox").checked;
     const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
     db.addBook({
+      ...flt.suggestContent(book), // coarse auto-tags; user-editable
       ...book,
       shelf,
       owned,
@@ -941,6 +958,25 @@ async function openDetail(id) {
         .join("")}
       <button class="filter-chip ${!b.profile ? "active" : ""}" data-assign="">Shared</button>
     </div>` : ""}
+    ${trackContent() ? `
+    <div class="assign-row">
+      <span class="rate-label">Content:</span>
+      ${flt.CONTENT_OPTIONS.filter(([v]) => v !== "sfw")
+        .map(([value, label]) =>
+          `<button class="filter-chip ${b.content === value ? "active" : ""}"
+                   data-set-content="${value}">${label}</button>`)
+        .join("")}
+    </div>
+    <div class="rate-row">
+      <span class="rate-label">Spice:</span>
+      <span class="rate-stars">
+        ${[1, 2, 3, 4, 5]
+          .map((n) => `<button class="star-btn pepper ${(b.spice ?? 0) >= n ? "filled" : ""}"
+                        data-spice="${n}" aria-label="Spice ${n} of 5">🌶️</button>`)
+          .join("")}
+      </span>
+      ${b.spice ? `<button class="link-btn" data-clear-spice>clear</button>` : ""}
+    </div>` : ""}
     <div class="rate-row">
       <span class="rate-label">Your rating:</span>
       <span class="rate-stars">
@@ -989,6 +1025,26 @@ async function openDetail(id) {
       renderShelf();
     })
   );
+  $("#detail-content").querySelectorAll("[data-set-content]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      // Tapping the active tag clears it back to untagged.
+      db.updateBook(id, { content: b.content === btn.dataset.setContent ? null : btn.dataset.setContent });
+      renderShelf();
+      openDetail(id);
+    })
+  );
+  $("#detail-content").querySelectorAll("[data-spice]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      db.updateBook(id, { spice: Number(btn.dataset.spice) });
+      renderShelf();
+      openDetail(id);
+    })
+  );
+  $("#detail-content").querySelector("[data-clear-spice]")?.addEventListener("click", () => {
+    db.updateBook(id, { spice: null });
+    renderShelf();
+    openDetail(id);
+  });
   $("#detail-content").querySelectorAll("[data-set-medium]").forEach((btn) =>
     btn.addEventListener("click", () => {
       db.updateBook(id, { medium: btn.dataset.setMedium });
@@ -1600,6 +1656,15 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">${trackMedium() ? "On" : "Off"}</span>
       </button>
+      <button class="settings-row" id="content-toggle">
+        <span class="row-main">
+          <span class="row-icon">🌶️</span>
+          <span>Spice &amp; content ratings
+            <span class="row-sub">Tag books Kids / Teen / Mature / Explicit with a 🌶️ scale</span>
+          </span>
+        </span>
+        <span class="row-go">${trackContent() ? "On" : "Off"}</span>
+      </button>
       <button class="settings-row" id="persist-toggle">
         <span class="row-main">
           <span class="row-icon">🛡️</span>
@@ -1636,6 +1701,17 @@ function renderSettingsScreen() {
     </div>
 
     <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
+
+  $("#content-toggle").addEventListener("click", () => {
+    const next = !trackContent();
+    localStorage.setItem(CONTENT_KEY, next ? "1" : "0");
+    if (!next) {
+      shelfFilter.content = null;
+      shelfFilter.spice = null;
+    }
+    renderSettingsScreen();
+    renderShelf();
+  });
 
   updatePersistStatus();
   $("#persist-toggle").addEventListener("click", async () => {

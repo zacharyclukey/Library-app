@@ -89,6 +89,8 @@ async function fetchOpenLibraryEdition(isbn) {
       ? `https://covers.openlibrary.org/b/id/${ed.covers[0]}-M.jpg`
       : `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`,
     series: parseOlSeries(ed.series),
+    // Edition-level subject tags feed genre filters and content auto-tagging.
+    subjects: (ed.subjects ?? []).filter((x) => typeof x === "string"),
   };
 }
 
@@ -162,6 +164,9 @@ function googleVolumeToBook(item, fallbackIsbn) {
     coverUrl: v.imageLinks?.thumbnail?.replace("http://", "https://") ?? null,
     series,
     subjects: v.categories ?? [],
+    // Google's coarse content flag ("MATURE" / "NOT_MATURE") — the only
+    // free audience-rating signal any book API provides.
+    maturity: v.maturityRating ?? null,
   };
 }
 

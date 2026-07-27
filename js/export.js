@@ -61,7 +61,7 @@ export function buildCsv(books, ratingOf = () => null) {
   const headers = [
     "Title", "Subtitle", "Authors", "Series", "Series #", "Copy type", "Format",
     "Publisher", "Published", "Pages", "ISBN-13", "ISBN-10", "Shelf", "Owned",
-    "My rating", "Belongs to", "Added",
+    "My rating", "Content", "Spice", "Belongs to", "Added",
   ];
   const rows = books.map((b) => [
     b.title, b.subtitle, (b.authors ?? []).join("; "),
@@ -69,7 +69,7 @@ export function buildCsv(books, ratingOf = () => null) {
     { print: "print", ebook: "e-book", audio: "audiobook" }[b.medium] ?? "print",
     b.format, b.publisher, b.publishDate,
     b.pageCount, b.isbn13, b.isbn10, b.shelf, b.owned ? "yes" : "no",
-    ratingOf(b), b.profile, b.addedAt?.slice(0, 10),
+    ratingOf(b), b.content, b.spice, b.profile, b.addedAt?.slice(0, 10),
   ]);
   return [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
 }

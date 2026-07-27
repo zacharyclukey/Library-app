@@ -109,6 +109,38 @@ export const FORMAT_OPTIONS = [
 export const STATUS_OPTIONS = [
   ["reading", "📖 Currently reading"],
 ];
+// Content/audience tags. "SFW" as a filter means "not marked mature or
+// explicit" — untagged books pass, since most of a library is never tagged.
+export const CONTENT_OPTIONS = [
+  ["kids", "🧸 Kids"],
+  ["teen", "🌱 Teen"],
+  ["sfw", "✅ SFW"],
+  ["mature", "🔞 Mature"],
+  ["explicit", "🌶️ Explicit"],
+];
+export const CONTENT_LABEL = {
+  kids: "🧸 Kids", teen: "🌱 Teen", general: "✅ SFW",
+  mature: "🔞 Mature", explicit: "🌶️ Explicit",
+};
+export const SPICE_OPTIONS = [
+  ["any", "🌶️ Spicy (any)"],
+  ["3plus", "🌶️🌶️🌶️ 3+"],
+  ["none", "No spice"],
+];
+
+// Best-effort auto-tag from subject tags and Google Books' maturity flag.
+// Coarse by design — no free source rates spice level, so these are
+// suggestions the user can override, not verdicts.
+export function suggestContent(book) {
+  const hay = [...(book.subjects ?? []), book.title ?? ""].join(" | ");
+  if (/erotic|erotica/i.test(hay)) return { content: "explicit", spice: 4 };
+  if (book.maturity === "MATURE") return { content: "mature" };
+  if (/juvenile literature|juvenile fiction|children's|picture book/i.test(hay)) {
+    return { content: "kids" };
+  }
+  if (/young adult|teen fiction/i.test(hay)) return { content: "teen" };
+  return {};
+}
 export const RATED_OPTIONS = [
   ["4plus", "Rated 4★+"],
   ["unrated", "Unrated"],
@@ -134,13 +166,19 @@ export function matchesFilter(book, f, opts = {}) {
   if (f.format === "ebook" && book.medium !== "ebook") return false;
   if (f.format === "audio" && book.medium !== "audio") return false;
   if (f.status === "reading" && !book.reading) return false;
+  if (f.content === "sfw" && ["mature", "explicit"].includes(book.content)) return false;
+  if (f.content && f.content !== "sfw" && book.content !== f.content) return false;
+  if (f.spice === "any" && !((book.spice ?? 0) > 0)) return false;
+  if (f.spice === "3plus" && !((book.spice ?? 0) >= 3)) return false;
+  if (f.spice === "none" && (book.spice ?? 0) > 0) return false;
   if (f.rated === "4plus" && !((opts.myRating ?? 0) >= 4)) return false;
   if (f.rated === "unrated" && opts.myRating) return false;
   return true;
 }
 
 export function activeFilterCount(f) {
-  const chips = ["genre", "series", "age", "format", "rated", "status"].filter((k) => f[k]).length;
+  const chips = ["genre", "series", "age", "format", "rated", "status", "content", "spice"]
+    .filter((k) => f[k]).length;
   return chips + (isFullPageRange(f.pages) ? 0 : 1);
 }
 

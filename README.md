@@ -20,6 +20,14 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Currently reading** 📖 — flag what you're reading now from a book's detail
   view; it's badged on the card, floats to the top of To Read, has its own
   filter chip, and clears automatically when you move the book to Finished.
+- **Spice & content ratings (opt-in)** 🌶️ — enable **Settings → Spice & content
+  ratings** to tag books Kids / Teen / Mature / Explicit and rate spice on a
+  1–5 🌶️ scale, with matching filters (including an SFW filter that hides
+  anything marked mature or explicit). Tags sync to the household and export to
+  CSV. Books are auto-suggested a tag when the data supports it (Google Books'
+  maturity flag, "Erotic fiction"/"Juvenile fiction"-style subject tags), but no
+  free source rates spice levels — so it's your call, one tap in the detail
+  view. Off by default and invisible until enabled.
 - **Print, Kindle, and Audible aware (opt-in)** 📱🎧 — "read but not owned" is
   always available via the *I own this copy* checkbox. For people who also want
   to track *where* they own things, enable **Settings → Track copy types** to
