@@ -94,6 +94,12 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   of the set is one tap each). What you set beats detection, never gets
   overwritten, syncs to the household, and groups the shelf straight away.
   "Not in a series" sticks too, instead of being re-guessed every launch.
+- **Move a pile at once** ☑️ — the tick button in the toolbar turns the shelf
+  into a picker: tap books to select (nothing opens or flips), then send the
+  lot to Owned / To Read / Finished / Wishlist from the bar along the bottom.
+  **Select all** takes whatever the current search and filters are showing, so
+  "everything by this author" or "everything under 300 pages" is two taps. The
+  whole batch undoes as one.
 - **Two ways to browse** — a cover-forward shelf grid where each row of books sits
   on a wooden ledge (with spine-styled fallback covers for books with no jacket
   art), or a detailed list, plus a bottom navigation bar.

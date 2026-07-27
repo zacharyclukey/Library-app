@@ -441,6 +441,7 @@ let currentScreen = "shelves";
 
 function showScreen(name, { push = true } = {}) {
   if (!SCREENS.includes(name)) name = "shelves";
+  if (selectMode && name !== "shelves") setSelectMode(false);
   currentScreen = name;
 
   SCREENS.forEach((s) =>
@@ -565,6 +566,7 @@ function renderShelf() {
   renderAzRail(books);
   renderNudge();
   renderHero();
+  updateBulkBar(); // "Select all N" tracks the filter you just changed
 }
 
 // A quiet line of context at the top of the shelves — who's reading, and
@@ -651,6 +653,90 @@ const CHUNK = 60;
 let renderQueue = [];
 let renderShowNames = false;
 const flippedIds = new Set();
+
+// ---------- selecting several books at once ----------
+//
+// Tidying a shelf one book at a time is the thing that makes a big library
+// feel like work. In select mode a tap picks a book instead of opening it,
+// and the bottom bar moves the lot in one go — still undoable as a batch.
+
+let selectMode = false;
+const selectedIds = new Set();
+
+function setSelectMode(on) {
+  selectMode = on;
+  if (!on) selectedIds.clear();
+  disarmQuickAction();
+  document.body.classList.toggle("selecting", on);
+  $("#select-toggle").classList.toggle("on", on);
+  $("#bulk-bar").classList.toggle("hidden", !on);
+  renderShelf();
+  updateBulkBar();
+}
+
+function toggleSelected(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  const card = bookList.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  card?.classList.toggle("picked", selectedIds.has(id));
+  navigator.vibrate?.(5);
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  if (!selectMode) return;
+  const n = selectedIds.size;
+  $("#bulk-count").textContent = n === 1 ? "1 selected" : `${n} selected`;
+  const allShown = visibleBooks.length > 0 && visibleBooks.every((b) => selectedIds.has(b.id));
+  $("#bulk-all").textContent = allShown ? "Clear all" : `Select all ${visibleBooks.length}`;
+  $("#bulk-bar").querySelectorAll("[data-bulk-move]").forEach((btn) => {
+    btn.disabled = n === 0;
+  });
+}
+
+// Moves the selection, with one Undo covering the whole batch.
+function bulkMove(to) {
+  const books = [...selectedIds].map((id) => db.getBook(id)).filter(Boolean);
+  if (!books.length) return;
+  const before = JSON.parse(JSON.stringify(books));
+  for (const b of books) {
+    const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
+    db.updateBook(b.id, {
+      shelf: to,
+      owned,
+      reading: to === "tbr" || to === "owned" ? b.reading ?? false : false,
+      finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
+      ...readHerePatch(b, to),
+    });
+    seriesCache.delete(b.id);
+  }
+  const n = books.length;
+  setSelectMode(false);
+  navigator.vibrate?.(15);
+  toast(`Moved ${n} book${n === 1 ? "" : "s"} to ${SHELF_LABEL[to]}`, {
+    actionLabel: "Undo",
+    onAction: () => {
+      before.forEach((b) => db.replaceBook(b));
+      renderShelf();
+      toast(`Put ${n} book${n === 1 ? "" : "s"} back`);
+    },
+  });
+}
+
+$("#select-toggle").addEventListener("click", () => setSelectMode(!selectMode));
+$("#bulk-cancel").addEventListener("click", () => setSelectMode(false));
+$("#bulk-all").addEventListener("click", () => {
+  const allShown = visibleBooks.length > 0 && visibleBooks.every((b) => selectedIds.has(b.id));
+  if (allShown) selectedIds.clear();
+  else visibleBooks.forEach((b) => selectedIds.add(b.id));
+  bookList.querySelectorAll("[data-id]").forEach((card) =>
+    card.classList.toggle("picked", selectedIds.has(card.dataset.id))
+  );
+  updateBulkBar();
+});
+$("#bulk-bar").querySelectorAll("[data-bulk-move]").forEach((btn) =>
+  btn.addEventListener("click", () => bulkMove(btn.dataset.bulkMove))
+);
 
 function renderChunk() {
   const next = renderQueue.splice(0, CHUNK);
@@ -744,7 +830,8 @@ function gridCard(b, showNames) {
   // Front: the cover. Tap flips to your own take on the book — rating and
   // the actions you reach for most — without leaving the shelf.
   return `
-    <article class="grid-book" data-id="${esc(b.id)}" title="${esc(b.title)}">
+    <article class="grid-book${selectedIds.has(b.id) ? " picked" : ""}" data-id="${esc(b.id)}" title="${esc(b.title)}">
+      ${selectMode ? `<span class="pick-dot" aria-hidden="true">${icon("check")}</span>` : ""}
       <div class="flip">
         <div class="flip-front">
           ${coverHtml(b)}
@@ -809,7 +896,8 @@ function listCard(b, showNames) {
     ? `<span class="badge more-badge">📚 ${missing} more in series</span>`
     : "";
   return `
-    <article class="book-card" data-id="${esc(b.id)}">
+    <article class="book-card${selectedIds.has(b.id) ? " picked" : ""}" data-id="${esc(b.id)}">
+      ${selectMode ? `<span class="pick-dot" aria-hidden="true">${icon("check")}</span>` : ""}
       ${coverHtml(b)}
       <div class="book-info">
         <h3>${esc(b.title)}</h3>
@@ -883,6 +971,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
     });
     currentShelf = tab.dataset.shelf;
     flippedIds.clear();
+    // A selection belongs to the shelf you made it on.
+    if (selectMode) return setSelectMode(false);
     renderShelf();
   });
 });
@@ -1558,6 +1648,12 @@ bookList.addEventListener("click", (e) => {
   const b = db.getBook(id);
   if (!b) return;
 
+  // While selecting, a tap picks the book — nothing opens, nothing flips.
+  if (selectMode) {
+    e.preventDefault();
+    return toggleSelected(id);
+  }
+
   // List view keeps the straightforward tap-to-open behaviour.
   const flip = card.querySelector(".flip");
   if (!flip) return openDetail(id);
@@ -1672,6 +1768,7 @@ let pressTimer = null;
 let suppressNextCardClick = false;
 bookList.addEventListener("pointerdown", (e) => {
   const card = e.target.closest(".grid-book");
+  if (selectMode) return; // a press is a pick, not a flip
   if (!card || e.target.closest("[data-qa-details],[data-qa-rate],[data-qa-move],[data-qa-reading]")) return;
   clearTimeout(pressTimer);
   pressTimer = setTimeout(() => {

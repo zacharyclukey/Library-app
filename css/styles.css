@@ -1323,6 +1323,64 @@ img.cover.missing { display: none; }
 }
 
 /* ============================================================
+   Selecting several books
+   ============================================================ */
+
+.tool-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.pick-dot {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  z-index: 3;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  color: transparent;
+  box-shadow: var(--shadow-1);
+}
+.pick-dot .ico { width: 0.85rem; height: 0.85rem; }
+.picked .pick-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.grid-book, .book-card { position: relative; }
+.picked .flip-front, .picked.book-card {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 3px 7px 7px 3px;
+}
+/* No flipping or hovering while picking — a tap means "choose this". */
+body.selecting .flip-btn { display: none; }
+body.selecting .grid-book, body.selecting .book-card { cursor: pointer; }
+
+.bulk-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.14);
+}
+.bulk-head { display: flex; align-items: center; gap: 0.75rem; }
+.bulk-count { font-weight: 700; font-size: 0.88rem; margin-right: auto; }
+.bulk-moves { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.35rem; }
+.bulk-moves .shelf-pick { padding: 0.55rem 0.2rem; font-size: 0.72rem; }
+.bulk-moves .shelf-pick[disabled] { opacity: 0.45; pointer-events: none; }
+/* The bulk bar stands in for the nav while it's up — and it's taller, so the
+   page needs the extra room to scroll clear of it. */
+body.selecting .bottom-nav { display: none; }
+body.selecting {
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 2.5rem);
+}
+
+/* ============================================================
    Bottom navigation
    ============================================================ */
 

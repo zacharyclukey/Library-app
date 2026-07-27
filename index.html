@@ -86,6 +86,7 @@
           <span class="tool-label">Sort<span class="tool-label-more"> &amp; filter</span></span>
           <span id="filter-count" class="count hidden"></span>
         </button>
+        <button id="select-toggle" class="tool-btn icon-only" title="Select several books" data-ico="check"></button>
         <button id="view-toggle" class="tool-btn icon-only" title="Switch between grid and list"></button>
       </div>
       <div id="filter-panel" class="filter-panel hidden"></div>
@@ -161,6 +162,21 @@
     <div class="screen-body" id="sync-content"></div>
   </section>
   </main>
+
+  <!-- Bulk actions: takes the place of the bottom nav while selecting. -->
+  <div id="bulk-bar" class="bulk-bar hidden" role="toolbar" aria-label="Move selected books">
+    <div class="bulk-head">
+      <span id="bulk-count" class="bulk-count">0 selected</span>
+      <button id="bulk-all" class="link-btn">Select all</button>
+      <button id="bulk-cancel" class="link-btn">Done</button>
+    </div>
+    <div class="bulk-moves">
+      <button class="shelf-pick" data-bulk-move="owned"><span data-ico="books"></span> Owned</button>
+      <button class="shelf-pick" data-bulk-move="tbr"><span data-ico="bookmark"></span> To Read</button>
+      <button class="shelf-pick" data-bulk-move="completed"><span data-ico="check"></span> Finished</button>
+      <button class="shelf-pick" data-bulk-move="wishlist"><span data-ico="gift"></span> Wishlist</button>
+    </div>
+  </div>
 
   <nav class="bottom-nav">
     <button class="nav-btn active" id="nav-shelves">
