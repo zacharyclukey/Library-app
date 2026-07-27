@@ -1242,6 +1242,29 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
   user-select: all;
 }
 .sync-error { color: var(--red); font-size: 0.85rem; }
+
+.member-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.member-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.7rem;
+  font-size: 0.88rem;
+}
+.member-list li.me { border-color: var(--accent-border); background: var(--accent-soft); }
+.member-list .avatar { width: 1.9rem; height: 1.9rem; font-size: 0.9rem; }
+.member-main { flex: 1; min-width: 0; }
+.member-main em { font-style: normal; color: var(--muted); font-size: 0.8rem; }
+.member-sub { display: block; font-size: 0.74rem; color: var(--muted); }
 #sync-content p, #export-content p, #settings-content p { font-size: 0.88rem; line-height: 1.55; }
 #sync-content a, #settings-content a { color: var(--accent); }
 

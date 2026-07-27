@@ -1353,6 +1353,70 @@ $("#nav-shelves").addEventListener("click", () => {
 
 const syncModal = $("#sync-modal");
 let syncError = null;
+let syncMembers = [];
+
+function onMembers(members) {
+  syncMembers = members;
+  if (syncModal.open) renderSyncModal();
+}
+
+// Options every start/join/create call needs, so the member list and this
+// device's own entry stay current.
+function syncOpts() {
+  return {
+    localBooks: db.getAllBooks(),
+    onMembers,
+    profileName: currentProfile(),
+  };
+}
+
+function timeAgo(iso) {
+  const then = Date.parse(iso ?? "");
+  if (!then) return "";
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 2) return "active now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.round(hrs / 24);
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
+function membersHtml() {
+  if (!syncMembers.length) {
+    return `<p class="muted" style="font-size:0.82rem">Looking for other devices…</p>`;
+  }
+  const mine = sync.deviceId();
+  return `
+    <ul class="member-list">
+      ${syncMembers
+        .map((mem) => {
+          const isMe = mem.deviceId === mine;
+          return `
+          <li class="${isMe ? "me" : ""}">
+            <span class="avatar">${esc((mem.name ?? "?")[0].toUpperCase())}</span>
+            <span class="member-main">
+              <strong>${esc(mem.name ?? "Someone")}</strong>${isMe ? " <em>(this phone)</em>" : ""}
+              <span class="member-sub">${esc(timeAgo(mem.lastSeen))}</span>
+            </span>
+            ${isMe ? "" : `<button class="link-btn" data-drop-member="${esc(mem.deviceId)}">Remove</button>`}
+          </li>`;
+        })
+        .join("")}
+    </ul>`;
+}
+
+function wireMemberButtons(el) {
+  el.querySelectorAll("[data-drop-member]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const mem = syncMembers.find((x) => x.deviceId === btn.dataset.dropMember);
+      if (!confirm(`Remove “${mem?.name ?? "this device"}” from the member list?\n\nThis only clears the entry — if that phone is still connected it will reappear. To lock someone out for good, create a new library with a different password.`)) {
+        return;
+      }
+      await sync.removeMember(btn.dataset.dropMember);
+    })
+  );
+}
 
 function onRemoteBooks(books) {
   db.applyRemote(books);
@@ -1396,6 +1460,15 @@ function renderSyncModal() {
 }
 
 function renderSyncActive(el) {
+  const memberBlock = `
+    <div class="settings-section">
+      <span class="filter-label">Who's in this library (${syncMembers.length || "…"})</span>
+      ${membersHtml()}
+      <p class="muted" style="font-size:0.75rem;margin:0.5rem 0 0">
+        One entry per device — a phone and a tablet show separately. Names come
+        from each device's profile.</p>
+    </div>`;
+
   const leaveBlock = `
     ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
     <div class="detail-actions">
@@ -1412,6 +1485,7 @@ function renderSyncActive(el) {
       library → Join</em>. The password never leaves your devices, so there's
       no way to recover it if forgotten; to change it, create a new library
       (your books come along) and have everyone rejoin.</p>
+      ${memberBlock}
       ${leaveBlock}`;
   } else {
     // Legacy code-based household.
@@ -1420,6 +1494,7 @@ function renderSyncActive(el) {
       <p>✅ Sharing is <strong>on</strong>. This phone is part of household:</p>
       <p class="household-code">${esc(code)}</p>
       <p class="muted">Anyone who joins with this code shares the library.</p>
+      ${memberBlock}
       <div class="settings-section">
         <span class="filter-label">Upgrade to a named library</span>
         <p class="muted" style="margin:0.4rem 0 0.5rem">Give the library a real
@@ -1431,23 +1506,40 @@ function renderSyncActive(el) {
                    autocomplete="off" />
           </div>
           <div class="inline-form">
-            <input type="password" id="convert-password" placeholder="Password (6+ characters)"
+            <input type="password" id="convert-password" placeholder="Password (8+ characters)"
                    autocomplete="new-password" />
-            <button type="submit" class="primary-btn">Upgrade</button>
           </div>
+          <div class="detail-actions" style="margin-top:0.35rem">
+            <button type="submit" class="primary-btn" data-convert-intent="create">Create it</button>
+            <button type="submit" class="secondary-btn" style="margin-top:0"
+                    data-convert-intent="join">Join existing</button>
+          </div>
+          <p class="muted" style="font-size:0.75rem;margin:0.4rem 0 0">
+            If someone else already upgraded this household, use <em>Join existing</em>
+            with the name and password they chose.</p>
         </form>
       </div>
       ${leaveBlock}`;
 
+    let convertIntent = "create";
+    el.querySelectorAll("[data-convert-intent]").forEach((btn) =>
+      btn.addEventListener("click", () => (convertIntent = btn.dataset.convertIntent))
+    );
     $("#convert-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      await activateNamed($("#convert-name").value, $("#convert-password").value, true);
+      await activateNamed(
+        $("#convert-name").value,
+        $("#convert-password").value,
+        convertIntent === "create"
+      );
     });
   }
 
+  wireMemberButtons(el);
   $("#leave-btn").addEventListener("click", () => {
     if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
       sync.leave();
+      syncMembers = [];
       syncError = null;
       updateSyncIndicator();
       renderSyncModal();
@@ -1506,7 +1598,7 @@ function renderSyncJoin(el) {
     if (!code.trim()) return;
     syncError = null;
     try {
-      await sync.join(code, db.getAllBooks(), onRemoteBooks, onSyncError);
+      await sync.join(code, db.getAllBooks(), onRemoteBooks, onSyncError, syncOpts());
     } catch (err) {
       syncError = err.message;
     }
@@ -1522,9 +1614,9 @@ async function activateNamed(name, password, create) {
       name,
       password,
       create,
-      localBooks: db.getAllBooks(),
       onRemote: onRemoteBooks,
       onError: onSyncError,
+      ...syncOpts(),
     });
   } catch (err) {
     syncError = err.message;
@@ -1536,7 +1628,7 @@ async function activateNamed(name, password, create) {
 async function initSync() {
   if (sync.isConfigured() && sync.currentHousehold()) {
     try {
-      await sync.start(onRemoteBooks, onSyncError, { localBooks: db.getAllBooks() });
+      await sync.start(onRemoteBooks, onSyncError, syncOpts());
     } catch (err) {
       syncError = err.message;
     }

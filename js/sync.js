@@ -24,8 +24,14 @@ import { firebaseConfig } from "./firebase-config.js";
 
 const HOUSEHOLD_KEY = "shelfie.household.v1";       // library id (nl_… or legacy code)
 const HOUSEHOLD_NAME_KEY = "shelfie.householdName.v1"; // display name (named libraries)
+const DEVICE_KEY = "shelfie.deviceId.v1";
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2";
 const META_ID = "_meta";
+// Members live as reserved docs inside the books collection (rather than a
+// sibling collection) so the Firestore rules from SETUP-SYNC.md keep working
+// unchanged, and so they arrive on the same snapshot as the books — no extra
+// reads. Everything "_"-prefixed is filtered out of the book list.
+const MEMBER_PREFIX = "_member:";
 
 let fsdb = null; // Firestore instance
 let m = null;    // firestore module namespace
@@ -49,6 +55,17 @@ export function isNamed() {
 
 export function isActive() {
   return !!unsubscribe;
+}
+
+// A stable per-device id, so one person's phone and tablet show as separate
+// members and a device can update its own entry.
+export function deviceId() {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
 }
 
 async function ensureFirebase() {
@@ -109,9 +126,22 @@ export async function start(onRemote, onError, opts = {}) {
   unsubscribe = m.onSnapshot(
     m.collection(fsdb, "households", libId, "books"),
     (snap) => {
-      const books = snap.docs.filter((d) => !d.id.startsWith("_")).map((d) => d.data());
+      const books = [];
+      const members = [];
+      for (const d of snap.docs) {
+        if (d.id.startsWith(MEMBER_PREFIX)) members.push(d.data());
+        else if (!d.id.startsWith("_")) books.push(d.data());
+      }
+      members.sort((a, b) => (a.joinedAt ?? "").localeCompare(b.joinedAt ?? ""));
+      opts.onMembers?.(members);
+
       if (firstSnapshot) {
         firstSnapshot = false;
+        // Announce this device once the roster is known, so joinedAt is
+        // preserved for a device that was already a member.
+        const mine = members.find((x) => x.deviceId === deviceId());
+        announceMember(opts.profileName, mine?.joinedAt).catch(() => {});
+
         const local = opts.localBooks ?? [];
         if (books.length === 0 && local.length > 0) {
           uploadBooks(libId, local).catch((err) => onError?.(err));
@@ -125,6 +155,32 @@ export async function start(onRemote, onError, opts = {}) {
   return true;
 }
 
+// Record (or refresh) this device's entry in the member list.
+export async function announceMember(profileName, joinedAt) {
+  const libId = currentHousehold();
+  if (!libId || !m) return;
+  const now = new Date().toISOString();
+  await m.setDoc(
+    bookDoc(libId, MEMBER_PREFIX + deviceId()),
+    {
+      _member: true,
+      deviceId: deviceId(),
+      name: (profileName ?? "").trim() || "Someone",
+      joinedAt: joinedAt ?? now,
+      lastSeen: now,
+    },
+    { merge: true }
+  );
+}
+
+// Drop a member entry — this device on leaving, or a stale one the user
+// clears out from the member list.
+export function removeMember(id = deviceId()) {
+  const libId = currentHousehold();
+  if (!libId || !m) return Promise.resolve();
+  return m.deleteDoc(bookDoc(libId, MEMBER_PREFIX + id)).catch(() => {});
+}
+
 export function stop() {
   unsubscribe?.();
   unsubscribe = null;
@@ -134,18 +190,32 @@ export function stop() {
 // device's existing books first so libraries merge instead of losing
 // anyone's shelves. Throws Error with .code = "not-found" when joining a
 // library that doesn't exist (typo'd name or wrong password).
-export async function openNamed({ name, password, create, localBooks, onRemote, onError }) {
+export async function openNamed(opts) {
+  const { name, password, create, localBooks, onRemote, onError, onMembers, profileName } = opts;
   const displayName = normalizeLibraryName(name);
   if (!displayName) throw new Error("Enter a library name.");
   if (!password) throw new Error("Enter a password.");
-  if (create && password.length < 6) {
-    throw new Error("Use a password of at least 6 characters.");
+  if (create) {
+    const problem = passwordProblem(displayName, password);
+    if (problem) throw new Error(problem);
   }
 
   await ensureFirebase();
   const libId = await deriveLibraryId(displayName, password);
   const metaRef = bookDoc(libId, META_ID);
   const meta = await m.getDoc(metaRef);
+
+  if (meta.exists() && create) {
+    // The name + password pair is what locates a library, so creating onto an
+    // existing one would silently merge two households. Make it a choice.
+    const err = new Error(
+      `A library called “${displayName}” with this exact password already exists. ` +
+      "If it's yours, tap Join library instead. If not, pick a different password " +
+      "(or a more distinctive name) so you get a library of your own."
+    );
+    err.code = "exists";
+    throw err;
+  }
 
   if (!meta.exists()) {
     if (!create) {
@@ -169,18 +239,42 @@ export async function openNamed({ name, password, create, localBooks, onRemote, 
     meta.exists() ? meta.data().name ?? displayName : displayName
   );
   await uploadBooks(libId, localBooks);
-  return start(onRemote, onError, { localBooks });
+  return start(onRemote, onError, { localBooks, onMembers, profileName });
+}
+
+// The name + password pair is the only key to a library, so a weak password
+// is the one thing that could let two unrelated households collide. Reject
+// the passwords that would realistically be picked twice.
+const COMMON_PASSWORDS = new Set([
+  "password", "password1", "password123", "12345678", "123456789", "1234567890",
+  "qwertyui", "iloveyou", "letmein1", "welcome1", "abc12345", "books123",
+  "library1", "library123", "changeme", "trustno1", "sunshine", "princess",
+  "football", "baseball", "starwars", "superman", "shelfie1", "shelfie123",
+]);
+
+export function passwordProblem(libraryName, password) {
+  const pw = String(password ?? "");
+  if (pw.length < 8) return "Use a password of at least 8 characters.";
+  const lower = pw.toLowerCase();
+  if (COMMON_PASSWORDS.has(lower)) {
+    return "That password is too common — two different households could pick it. Choose something more personal.";
+  }
+  if (lower === normalizeLibraryName(libraryName).toLowerCase()) {
+    return "The password can't be the same as the library name.";
+  }
+  if (/^(.)\1+$/.test(pw)) return "Choose a password with more variety.";
+  return null;
 }
 
 // Legacy: join an existing code-based household directly by its code.
-export async function join(code, localBooks, onRemote, onError) {
+export async function join(code, localBooks, onRemote, onError, opts = {}) {
   code = code.trim().toLowerCase();
   if (!code) throw new Error("Enter a household code.");
   await ensureFirebase();
   localStorage.setItem(HOUSEHOLD_KEY, code);
   localStorage.removeItem(HOUSEHOLD_NAME_KEY);
   await uploadBooks(code, localBooks);
-  return start(onRemote, onError, { localBooks });
+  return start(onRemote, onError, { localBooks, ...opts });
 }
 
 async function uploadBooks(libId, localBooks) {
@@ -194,6 +288,7 @@ async function uploadBooks(libId, localBooks) {
 // Leave the library on this device only; cloud data and other members are
 // untouched, and a local copy of the books is kept.
 export function leave() {
+  removeMember();               // best effort; fire-and-forget
   stop();
   localStorage.removeItem(HOUSEHOLD_KEY);
   localStorage.removeItem(HOUSEHOLD_NAME_KEY);

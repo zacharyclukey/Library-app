@@ -76,9 +76,29 @@ in real time, existing books on each phone are merged in when joining, and the
 series checker counts books owned by either of you. Leaving the shared library
 (same screen) only disconnects that phone — it keeps a local copy.
 
-How the password works: the app scrambles name + password together on your
-phone (PBKDF2) to derive the library's storage location — the password is never
-sent or stored online. That also means it can't be recovered or changed in
-place: if it's forgotten, create a new library (books come along) and have
-everyone rejoin. Households created with the older random-code system keep
-working, and the app offers a one-tap upgrade to a named library.
+The **Who's in this library** list on that screen shows every connected device,
+its profile name, and when it was last active — so you can always see exactly
+who you're sharing with.
+
+## How the name and password work
+
+The app scrambles name + password together on your phone (PBKDF2, 150k
+iterations) to derive the library's storage location. The password is never
+sent or stored online.
+
+- **The pair is the key.** Library names are not globally unique and don't need
+  to be: "Smith Library" with *your* password is a completely different library
+  from "Smith Library" with someone else's. Two households only collide if they
+  pick the *same name and the same password*.
+- **Creating never merges silently.** If you tap *Create* and that exact
+  name + password already exists, the app refuses and tells you to Join
+  instead (or pick a different password) — so you can't be dropped into a
+  stranger's library, and they can't be dropped into yours.
+- **Weak passwords are rejected on creation** (minimum 8 characters, no common
+  ones, not the same as the library name), because the password is the only
+  thing keeping two same-named libraries apart.
+- **It can't be recovered or changed in place.** If it's forgotten, create a new
+  library (your books come along) and have everyone rejoin.
+
+Households created with the older random-code system keep working, and the app
+offers a one-tap upgrade to a named library.
