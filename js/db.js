@@ -16,6 +16,7 @@
 //   spice: 1-5 | null,        // 🌶️ scale (opt-in UI)
 //   profile: name | null,     // whose list entry this is (null = shared)
 //   ratings: { profileName: 1-5 },
+//   reviews: { profileName: { text, updatedAt } },
 //   rating: 1-5 | null,       // legacy pre-profile rating
 //   series: { name, position } | null,
 //   addedAt: ISO string

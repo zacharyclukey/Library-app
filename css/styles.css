@@ -1264,6 +1264,33 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .rate-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.85rem; }
 .assign-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
 .other-rating { margin: -0.45rem 0 0.75rem; font-size: 0.82rem; color: var(--muted); }
+
+.review-section { margin: 0 0 1rem; display: grid; gap: 0.45rem; }
+#review-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.88rem;
+  padding: 0.55rem 0.7rem;
+  resize: vertical;
+}
+#review-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.review-section .secondary-btn { margin-top: 0; justify-self: start; }
+.other-review {
+  margin: 0.2rem 0 0;
+  padding: 0.6rem 0.8rem;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--accent-border);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 0.86rem;
+}
+.other-review p { margin: 0 0 0.25rem; }
+.other-review cite { font-style: normal; font-size: 0.76rem; color: var(--muted); }
+.community-line { margin: 0.1rem 0 0; font-size: 0.8rem; color: var(--gold-ink); }
+.community-line:empty { display: none; }
 .rate-label { font-size: 0.85rem; color: var(--muted); }
 .star-btn {
   background: none;

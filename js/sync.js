@@ -83,6 +83,14 @@ async function ensureFirebase() {
   }
 }
 
+// Shared Firestore handle for other modules (the community layer), so the
+// SDK is loaded once and only on demand.
+export async function firestore() {
+  if (!firebaseConfig) return null;
+  await ensureFirebase();
+  return { m, db: fsdb };
+}
+
 function bookDoc(libId, id) {
   // Firestore doc ids can't contain "/"; our ids ("isbn:...", "ol:...") don't.
   return m.doc(fsdb, "households", libId, "books", id);

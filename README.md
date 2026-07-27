@@ -41,8 +41,18 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   Amazon (direct product page via its ISBN when possible), Barnes & Noble,
   Bookshop.org, ThriftBooks, AbeBooks (used), WorldCat (your local library),
   and Goodreads (reviews).
-- **Star ratings** ⭐ — rate any book 1–5 from its detail view; ratings show on
-  cards and sync to the household.
+- **Star ratings & reviews** ⭐ — rate any book 1–5 and write a review from its
+  detail view; both are per-person, show to your household, and sync.
+- **Community layer (opt-in, structural)** 🌍 — the seed of user-powered
+  recommendations: with **Settings → Community sharing** on, your ratings,
+  spice/content tags, and reviews (attributed by first name) publish to a
+  shared `community/{bookKey}` collection keyed by stable book identity
+  (Open Library work → ISBN → title slug). Discover blends these signals over
+  the free-database baseline — "Shelfie readers rate it ★ 4.8" outranks a raw
+  Open Library score — and book details show the community's take. Free
+  databases remain the foundation; the community layer enriches wherever its
+  data exists, and a future multi-user release swaps in Firebase Auth without
+  touching the UI (see `js/community.js`).
 - **Profiles** 👤 — each phone picks a profile; To Read, Completed, and Wishlist
   are kept per person (with Mine / partner / Everyone filters) while the Owned
   shelf stays shared. Books can be reassigned from their detail view, and each

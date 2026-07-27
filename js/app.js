@@ -4,6 +4,7 @@ import * as sync from "./sync.js";
 import * as flt from "./filters.js";
 import * as xport from "./export.js";
 import * as themes from "./themes.js";
+import * as community from "./community.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 
 // ---------- element handles ----------
@@ -191,6 +192,13 @@ function goBack(fallback = "shelves") {
 document.querySelectorAll("[data-back]").forEach((btn) =>
   btn.addEventListener("click", () => goBack(btn.dataset.back || "shelves"))
 );
+
+// Push this profile's signals for a book to the community layer (inert
+// unless sharing is enabled in Settings).
+function shareToCommunity(id) {
+  const b = db.getBook(id);
+  if (b) community.publish(b, currentProfile() ?? "Someone");
+}
 
 // ---------- rendering ----------
 
@@ -991,6 +999,20 @@ async function openDetail(id) {
       .filter(([name, r]) => name !== currentProfile() && r)
       .map(([name, r]) => `<p class="other-rating">${esc(name)}: <span class="card-rating">${starString(r)}</span></p>`)
       .join("")}
+    <div class="review-section">
+      <span class="filter-label">Your review</span>
+      <textarea id="review-input" rows="3" placeholder="What did you think? Reviews sync to your shared library.">${esc(b.reviews?.[currentProfile()]?.text ?? "")}</textarea>
+      <button id="save-review-btn" class="secondary-btn">Save review</button>
+      ${Object.entries(b.reviews ?? {})
+        .filter(([name, r]) => name !== currentProfile() && r?.text)
+        .map(([name, r]) => `
+          <blockquote class="other-review">
+            <p>${esc(r.text)}</p>
+            <cite>— ${esc(name)}</cite>
+          </blockquote>`)
+        .join("")}
+      <p class="community-line" id="community-line"></p>
+    </div>
     <div class="find-section">
       <h3>Find this book</h3>
       <div class="store-links">
@@ -1025,10 +1047,21 @@ async function openDetail(id) {
       renderShelf();
     })
   );
+  $("#save-review-btn")?.addEventListener("click", () => {
+    const text = $("#review-input").value.trim();
+    const me = currentProfile() ?? "Me";
+    const reviews = { ...(b.reviews ?? {}) };
+    if (text) reviews[me] = { text, updatedAt: new Date().toISOString() };
+    else delete reviews[me];
+    db.updateBook(id, { reviews });
+    shareToCommunity(id);
+    openDetail(id);
+  });
   $("#detail-content").querySelectorAll("[data-set-content]").forEach((btn) =>
     btn.addEventListener("click", () => {
       // Tapping the active tag clears it back to untagged.
       db.updateBook(id, { content: b.content === btn.dataset.setContent ? null : btn.dataset.setContent });
+      shareToCommunity(id);
       renderShelf();
       openDetail(id);
     })
@@ -1036,6 +1069,7 @@ async function openDetail(id) {
   $("#detail-content").querySelectorAll("[data-spice]").forEach((btn) =>
     btn.addEventListener("click", () => {
       db.updateBook(id, { spice: Number(btn.dataset.spice) });
+      shareToCommunity(id);
       renderShelf();
       openDetail(id);
     })
@@ -1076,6 +1110,7 @@ async function openDetail(id) {
         ratings: { ...(b.ratings ?? {}), [me]: Number(btn.dataset.rate) },
         rating: null, // retire the pre-profile single rating
       });
+      shareToCommunity(id);
       renderShelf();
       openDetail(id); // re-render the modal with the new rating
     })
@@ -1098,6 +1133,20 @@ async function openDetail(id) {
   });
 
   renderSeriesSection(b);
+  renderCommunityLine(b);
+}
+
+// "What do the app's users think?" — shown when the community layer has
+// signals from beyond this device (future users; today, your household).
+async function renderCommunityLine(b) {
+  if (!community.isAvailable()) return;
+  const summary = await community.fetchSummary(community.bookKey(b));
+  const el = $("#community-line");
+  if (!el || !summary || !summary.ratingCount) return;
+  const bits = [`★ ${summary.ratingAvg.toFixed(1)} from ${summary.ratingCount} reader${summary.ratingCount === 1 ? "" : "s"}`];
+  if (summary.spiceCount) bits.push(`🌶️ ${summary.spiceAvg.toFixed(1)}`);
+  if (summary.reviewCount) bits.push(`${summary.reviewCount} review${summary.reviewCount === 1 ? "" : "s"}`);
+  el.textContent = "Shelfie readers: " + bits.join(" · ");
 }
 
 async function renderSeriesSection(book) {
@@ -1353,6 +1402,19 @@ async function buildRecommendations(books, f) {
       Math.min(r.editions ?? 0, 40) / 200 +
       (r.hits - 1) * 0.35,
   }));
+
+  // Blend in the app's own community: books our users rated well outrank
+  // the free-database baseline. (Sparse today; grows with every user.)
+  const summaries = await community.fetchSummaries(
+    scored.map((r) => community.bookKey({ workKey: r.workKey, title: r.title, authors: r.authors }))
+  );
+  for (const r of scored) {
+    const cs = summaries.get(community.bookKey({ workKey: r.workKey, title: r.title, authors: r.authors }));
+    if (cs?.ratingCount) {
+      r.score += (cs.ratingAvg - 3) * 0.5 + Math.min(cs.ratingCount, 20) / 20;
+      r.reason = `Shelfie readers rate it ★ ${cs.ratingAvg.toFixed(1)}`;
+    }
+  }
   scored.sort((a, b) => b.score - a.score);
 
   // Keep the list varied: at most two books per author.
@@ -1665,6 +1727,17 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">${trackContent() ? "On" : "Off"}</span>
       </button>
+      <button class="settings-row" id="community-toggle" ${community.isAvailable() ? "" : "disabled"}>
+        <span class="row-main">
+          <span class="row-icon">🌍</span>
+          <span>Community sharing
+            <span class="row-sub">${community.isAvailable()
+              ? "Share your ratings, tags &amp; reviews (with your first name) to power everyone's recommendations"
+              : "Needs the shared-library Firebase setup first"}</span>
+          </span>
+        </span>
+        <span class="row-go">${community.sharingEnabled() ? "On" : "Off"}</span>
+      </button>
       <button class="settings-row" id="persist-toggle">
         <span class="row-main">
           <span class="row-icon">🛡️</span>
@@ -1701,6 +1774,12 @@ function renderSettingsScreen() {
     </div>
 
     <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
+
+  $("#community-toggle").addEventListener("click", () => {
+    if (!community.isAvailable()) return;
+    community.setSharing(!community.sharingEnabled());
+    renderSettingsScreen();
+  });
 
   $("#content-toggle").addEventListener("click", () => {
     const next = !trackContent();

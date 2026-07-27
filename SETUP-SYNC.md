@@ -26,6 +26,14 @@ service cloud.firestore {
     match /households/{household}/books/{book} {
       allow read, write: if true;
     }
+    // Opt-in community layer: anonymized-per-device ratings, tags, and
+    // reviews that feed everyone's recommendations.
+    match /community/{book} {
+      allow read, write: if true;
+      match /signals/{signal} {
+        allow read, write: if true;
+      }
+    }
   }
 }
 ```
