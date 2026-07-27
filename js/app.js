@@ -259,6 +259,23 @@ function renderNudge() {
 // Everything here is derived from data already on the shelves — no new
 // bookkeeping, just a look back at what's been read.
 
+// A book counts toward "this year" only if the app actually watched you read
+// it: it was waiting on To Read, or flagged as currently reading, and then
+// moved to Finished. Logging a shelf of books you read years ago — whether
+// added straight onto Finished or marked off in a batch from Owned — is
+// cataloguing, not this year's reading, and shouldn't inflate the number.
+// Nothing extra to tick: the two paths that count are ones you'd take anyway.
+function countsAsReadHere(book) {
+  return book.shelf === "tbr" || book.reading === true;
+}
+
+// Only written when true, so a later move can never clear it.
+function readHerePatch(book, toShelf) {
+  return toShelf === "completed" && (book.readHere || countsAsReadHere(book))
+    ? { readHere: true }
+    : {};
+}
+
 function renderStatsScreen() {
   const el = $("#stats-content");
   const all = db.getAllBooks();
@@ -269,7 +286,9 @@ function renderStatsScreen() {
 
   const finished = db.getBooksOnShelf("completed");
   const year = new Date().getFullYear();
-  const finishedThisYear = finished.filter((b) => (b.finishedAt ?? "").startsWith(String(year)));
+  const finishedThisYear = finished.filter(
+    (b) => b.readHere && (b.finishedAt ?? "").startsWith(String(year))
+  );
   const pagesThisYear = finishedThisYear.reduce((n, b) => n + (Number(b.pageCount) || 0), 0);
   const rated = all.map((b) => myRating(b)).filter(Boolean);
   const avg = rated.length ? (rated.reduce((a, b) => a + b, 0) / rated.length).toFixed(1) : null;
@@ -329,9 +348,9 @@ function renderStatsScreen() {
             )
             .join("")}
         </div>
-        ${finishedThisYear.length === 0
-          ? `<p class="muted" style="font-size:0.78rem">Books get dated when you move them to Finished, so this fills in from here.</p>`
-          : ""}
+        <p class="muted stat-note">Counts books you read here — waiting on To Read, or
+          marked as reading, then moved to Finished. Books logged straight onto Finished
+          are older reads, so they stay out of this year's count.</p>
       </div>
     </div>
 
@@ -1586,6 +1605,7 @@ bookList.addEventListener("click", (e) => {
         owned,
         reading: to === "completed" ? false : b.reading ?? false,
         finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
+        ...readHerePatch(b, to),
       });
     });
     flippedIds.delete(id);
@@ -1832,7 +1852,7 @@ async function openDetail(id) {
       const reading = to === "tbr" || to === "owned" ? b.reading ?? false : false;
       const finishedAt = to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null;
       undoable(`Moved to ${SHELF_LABEL[to]}`, b, () =>
-        db.updateBook(id, { shelf: to, owned, reading, finishedAt })
+        db.updateBook(id, { shelf: to, owned, reading, finishedAt, ...readHerePatch(b, to) })
       );
       detailModal.close();
       renderShelf();
