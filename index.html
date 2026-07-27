@@ -10,6 +10,25 @@
   <link rel="icon" type="image/png" href="icons/icon-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <script>
+    // Apply the saved aesthetic before first paint so there's no flash of
+    // the default theme. js/themes.js owns this from then on.
+    (function () {
+      try {
+        var root = document.documentElement;
+        var skin = localStorage.getItem("shelfie.skin.v1") || "reading-room";
+        var mode = localStorage.getItem("shelfie.mode.v1") ||
+                   localStorage.getItem("shelfie.theme.v1") || "auto";
+        if (mode === "auto") {
+          mode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        root.setAttribute("data-skin", skin);
+        root.setAttribute("data-mode", mode);
+      } catch (e) {
+        document.documentElement.setAttribute("data-skin", "reading-room");
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>

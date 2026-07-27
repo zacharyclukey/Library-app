@@ -78,6 +78,15 @@ export function buildCsv(books, ratingOf = () => null) {
 // to PDF from any phone browser's share sheet.
 export function buildPrintableHtml(books, opts = {}) {
   const { title = "My Library", subtitle = "", ratingOf = () => null } = opts;
+  // The page is styled in the app's current aesthetic, always in its light
+  // palette so it prints well on paper.
+  const p = {
+    bg: "#f7f4ee", card: "#ffffff", ink: "#1c2230", inkSoft: "#4a5263",
+    muted: "#7a8394", line: "#e3e0d8", accent: "#22304d", accentSoft: "#e9edf6",
+    gold: "#d99b1e",
+    serif: '"Iowan Old Style", Palatino, Georgia, serif',
+    ...(opts.palette ?? {}),
+  };
   const s = stats(books);
 
   const statChips = [
@@ -121,31 +130,31 @@ export function buildPrintableHtml(books, opts = {}) {
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 2rem 1.25rem 3rem;
-    background: #f7f4ee; color: #1c2230;
+    background: ${p.bg}; color: ${p.ink};
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   .wrap { max-width: 900px; margin: 0 auto; }
-  header { text-align: center; border-bottom: 2px solid #22304d; padding-bottom: 1.25rem; margin-bottom: 1.75rem; }
-  h1 { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 2rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
-  .sub { color: #7a8394; font-size: .9rem; margin: 0; }
+  header { text-align: center; border-bottom: 2px solid ${p.accent}; padding-bottom: 1.25rem; margin-bottom: 1.75rem; }
+  h1 { font-family: ${p.serif}; font-size: 2rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  .sub { color: ${p.muted}; font-size: .9rem; margin: 0; }
   .stats { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; margin-top: 1rem; }
-  .stat { background: #fff; border: 1px solid #e3e0d8; border-radius: 999px; padding: .3rem .85rem; font-size: .82rem; }
-  .stat b { font-family: "Iowan Old Style", Palatino, Georgia, serif; }
+  .stat { background: ${p.card}; border: 1px solid ${p.line}; border-radius: 999px; padding: .3rem .85rem; font-size: .82rem; }
+  .stat b { font-family: ${p.serif}; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .8rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-  .bk { display: flex; gap: .9rem; background: #fff; border: 1px solid #e3e0d8; border-radius: 12px; padding: .8rem; break-inside: avoid; }
+  .bk { display: flex; gap: .9rem; background: ${p.card}; border: 1px solid ${p.line}; border-radius: 12px; padding: .8rem; break-inside: avoid; }
   .cv { position: relative; width: 62px; height: 93px; flex: none; border-radius: 3px 6px 6px 3px; overflow: hidden; box-shadow: 0 2px 6px rgba(16,24,40,.18); }
   .cv img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .fb { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; text-align: center;
         padding: .35rem; color: #fff; background: linear-gradient(150deg, hsl(var(--h) 34% 44%), hsl(var(--h) 40% 25%)); }
-  .fb span { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: .58rem; line-height: 1.2; font-weight: 600; }
+  .fb span { font-family: ${p.serif}; font-size: .58rem; line-height: 1.2; font-weight: 600; }
   .fb em { font-size: .5rem; opacity: .75; font-style: normal; margin-top: .2rem; }
   .tx { min-width: 0; }
-  h3 { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 1rem; margin: 0 0 .15rem; line-height: 1.25; }
-  .au { margin: 0; font-size: .85rem; color: #4a5263; }
-  .mt { margin: .15rem 0 0; font-size: .75rem; color: #7a8394; }
-  .sr { margin: .25rem 0 0; font-size: .72rem; color: #22304d; background: #e9edf6; display: inline-block; padding: .1rem .5rem; border-radius: 999px; }
-  .rt { margin: .25rem 0 0; font-size: .8rem; color: #d99b1e; letter-spacing: .08em; }
-  footer { text-align: center; color: #7a8394; font-size: .78rem; margin-top: 2rem; }
+  h3 { font-family: ${p.serif}; font-size: 1rem; margin: 0 0 .15rem; line-height: 1.25; }
+  .au { margin: 0; font-size: .85rem; color: ${p.inkSoft}; }
+  .mt { margin: .15rem 0 0; font-size: .75rem; color: ${p.muted}; }
+  .sr { margin: .25rem 0 0; font-size: .72rem; color: ${p.accent}; background: ${p.accentSoft}; display: inline-block; padding: .1rem .5rem; border-radius: 999px; }
+  .rt { margin: .25rem 0 0; font-size: .8rem; color: ${p.gold}; letter-spacing: .08em; }
+  footer { text-align: center; color: ${p.muted}; font-size: .78rem; margin-top: 2rem; }
   @media print {
     body { background: #fff; padding: 0; font-size: 11pt; }
     .bk { border-color: #ccc; }

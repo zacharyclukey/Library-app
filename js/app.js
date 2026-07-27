@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import * as sync from "./sync.js";
 import * as flt from "./filters.js";
 import * as xport from "./export.js";
+import * as themes from "./themes.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 
 // ---------- element handles ----------
@@ -58,7 +59,6 @@ const SHELF_ICON = { owned: "📗", tbr: "🔖", completed: "✅", wishlist: "�
 const SHELVES = ["owned", "tbr", "completed", "wishlist"];
 
 const VIEW_KEY = "shelfie.view.v1";
-const THEME_KEY = "shelfie.theme.v1";
 let viewMode = localStorage.getItem(VIEW_KEY) ?? "grid";
 
 function starString(rating) {
@@ -1143,6 +1143,31 @@ function renderExportModal() {
   );
 }
 
+// Colours for the printable page, taken from the active aesthetic. Read from
+// the skin's *light* palette (flipped and restored within one synchronous
+// block, so nothing repaints) because exports are meant for paper.
+function exportPalette() {
+  const root = document.documentElement;
+  const previous = root.getAttribute("data-mode");
+  root.setAttribute("data-mode", "light");
+  const cs = getComputedStyle(root);
+  const pick = (name) => cs.getPropertyValue(name).trim();
+  const palette = {
+    bg: pick("--bg"),
+    card: pick("--card"),
+    ink: pick("--ink"),
+    inkSoft: pick("--ink-soft"),
+    muted: pick("--muted"),
+    line: pick("--line"),
+    accent: pick("--accent"),
+    accentSoft: pick("--accent-soft"),
+    gold: pick("--gold"),
+    serif: pick("--serif"),
+  };
+  if (previous) root.setAttribute("data-mode", previous);
+  return palette;
+}
+
 async function runExport(format) {
   const books = exportBooks();
   const title = exportTitle();
@@ -1154,7 +1179,9 @@ async function runExport(format) {
     .join(" · ");
 
   if (format === "page") {
-    const html = xport.buildPrintableHtml(books, { title, subtitle, ratingOf: myRating });
+    const html = xport.buildPrintableHtml(books, {
+      title, subtitle, ratingOf: myRating, palette: exportPalette(),
+    });
     const opened = xport.openHtml(html, `shelfie-${name}.html`);
     status(
       opened
@@ -1204,21 +1231,12 @@ $("#settings-btn").addEventListener("click", () => {
   settingsModal.showModal();
 });
 
-function currentTheme() {
-  return localStorage.getItem(THEME_KEY) ?? "auto";
-}
-
-function applyTheme(theme) {
-  if (theme === "auto") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", theme);
-  localStorage.setItem(THEME_KEY, theme);
-}
-
 function renderSettingsModal() {
   const el = $("#settings-content");
   const me = currentProfile();
   const household = sync.isActive() ? sync.currentHousehold() : null;
-  const theme = currentTheme();
+  const skin = themes.currentSkin();
+  const mode = themes.currentMode();
 
   el.innerHTML = `
     <div class="settings-section">
@@ -1254,20 +1272,40 @@ function renderSettingsModal() {
     </div>
 
     <div class="settings-section">
-      <span class="filter-label">Appearance</span>
+      <span class="filter-label">Aesthetic</span>
+      <div class="theme-grid">
+        ${themes.THEMES.map(
+          (t) => `
+          <button class="theme-card ${skin === t.id ? "active" : ""}" data-skin="${t.id}">
+            <span class="theme-swatch">
+              ${t.swatch.map((c) => `<i style="background:${esc(c)}"></i>`).join("")}
+            </span>
+            <span class="theme-name">${esc(t.name)}${skin === t.id ? " ✓" : ""}</span>
+            <span class="theme-blurb">${esc(t.blurb)}</span>
+          </button>`
+        ).join("")}
+      </div>
+
+      <span class="filter-label" style="display:block;margin-top:0.9rem">Brightness</span>
       <div class="seg" style="margin-top:0.45rem">
-        ${[["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]
-          .map(([v, label]) =>
-            `<button class="filter-chip ${theme === v ? "active" : ""}" data-theme="${v}">${label}</button>`)
-          .join("")}
+        ${themes.MODES.map(
+          ([v, label]) =>
+            `<button class="filter-chip ${mode === v ? "active" : ""}" data-mode="${v}">${label}</button>`
+        ).join("")}
       </div>
     </div>
 
     <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
 
-  el.querySelectorAll("[data-theme]").forEach((btn) =>
+  el.querySelectorAll("[data-skin]").forEach((btn) =>
     btn.addEventListener("click", () => {
-      applyTheme(btn.dataset.theme);
+      themes.setSkin(btn.dataset.skin);
+      renderSettingsModal();
+    })
+  );
+  el.querySelectorAll("[data-mode]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      themes.setMode(btn.dataset.mode);
       renderSettingsModal();
     })
   );
@@ -1437,7 +1475,10 @@ async function backfillSubjects() {
 }
 
 // ---------- init ----------
-applyTheme(currentTheme());
+themes.apply();
+themes.watchSystem(() => {
+  if (settingsModal.open) renderSettingsModal();
+});
 updateViewToggle();
 updateProfileChip();
 renderShelf();

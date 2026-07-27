@@ -41,9 +41,13 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked
   ✅ owned / ◻️ not owned.
-- **Two ways to browse** — a cover-forward shelf grid (with spine-styled fallback
-  covers for books with no jacket art) or a detailed list, plus light/dark/auto
-  themes and a bottom navigation bar.
+- **Two ways to browse** — a cover-forward shelf grid where each row of books sits
+  on a wooden ledge (with spine-styled fallback covers for books with no jacket
+  art), or a detailed list, plus a bottom navigation bar.
+- **Aesthetics** 🕯️ — pick the mood in Settings: **Reading Room** (walnut,
+  parchment, brass lamplight — the default), **Cottage Garden**, **Dark
+  Academia**, or **Modern**, each with light/dark/auto brightness. Themes carry
+  through to printable exports. See [Adding an aesthetic](#adding-an-aesthetic).
 - **Exports per shelf** 📤 — export any shelf (or everything, optionally limited to
   what your filters are showing) as a printable/shareable page with covers and
   stats, a plain-text list for messaging, a CSV for spreadsheets, or a full JSON
@@ -82,6 +86,30 @@ Pages, Netlify, or `npx serve` behind a tunnel) so the camera is allowed.
 Both APIs are free and keyless; series data is best-effort (coverage is strong for
 popular series, spottier for obscure ones).
 
+## Adding an aesthetic
+
+Themes are data, not special cases — adding one takes two CSS blocks and one
+registry entry, and it shows up in Settings automatically.
+
+1. In `css/styles.css`, copy an existing palette and give it your own colours:
+
+   ```css
+   :root[data-skin="my-theme"]                    { /* light palette */ }
+   :root[data-skin="my-theme"][data-mode="dark"]  { /* dark palette  */ }
+   ```
+
+   Every surface reads from those tokens (`--bg`, `--card`, `--ink`, `--accent`,
+   `--shelf-grad`, `--page-glow`, `--page-texture`, …), so nothing else needs to
+   change. A theme can also swap its display font by setting `--serif`, and opt
+   out of the wood-grain header with `--header-grain: none`.
+
+2. In `js/themes.js`, add an entry to `THEMES` with an `id` matching the CSS, a
+   `name`, a one-line `blurb`, and three `swatch` colours for its preview chip.
+
+`js/themes.js` resolves *auto* to light or dark in JavaScript and sets
+`data-mode` on `<html>`, so no palette needs a media query, and an inline script
+in `index.html` applies the saved choice before first paint (no flash).
+
 ## Project layout
 
 ```
@@ -91,6 +119,7 @@ js/app.js         UI logic and state
 js/db.js          localStorage persistence
 js/api.js         Open Library / Google Books lookups + series detection
 js/filters.js     genre mapping, filter predicates, sort orders
+js/themes.js      aesthetic registry + light/dark resolution
 js/export.js      printable page / text / CSV / JSON exports
 js/sync.js        optional shared-household sync (Firebase)
 js/scanner.js     camera + photo barcode scanning

@@ -1,17 +1,280 @@
 /* ============================================================
-   Shelfie — design tokens
+   Shelfie — theme system
+
+   Structure is shared; every aesthetic ("skin") supplies a palette in two
+   blocks: [data-skin="x"] for light and [data-skin="x"][data-mode="dark"]
+   for dark. js/themes.js resolves auto → light/dark, so no palette needs a
+   media query. Adding an aesthetic = two CSS blocks + one registry entry.
    ============================================================ */
 
 :root {
   color-scheme: light;
 
-  --bg: #f7f4ee;
-  --bg-soft: #efeae1;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+  --r-sm: 9px;
+  --r: 14px;
+  --r-lg: 20px;
+  --nav-h: 4.4rem;
+
+  /* Paper grain, drawn inline so nothing is fetched from the network. */
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+
+  --shadow-1: 0 1px 2px rgba(50, 35, 20, 0.05), 0 1px 3px rgba(50, 35, 20, 0.08);
+  --shadow-2: 0 3px 10px rgba(50, 35, 20, 0.13);
+  --shadow-3: 0 14px 38px rgba(40, 28, 16, 0.3);
+
+  /* Vertical wood grain for the header. It repeats along x only, so the app
+     bar and the shelf tabs below it line up with no visible seam. */
+  --wood-grain: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.035) 0 2px,
+    rgba(0, 0, 0, 0.05) 2px 4px,
+    transparent 4px 11px,
+    rgba(0, 0, 0, 0.045) 11px 13px,
+    transparent 13px 19px
+  );
+  --header-grain: var(--wood-grain);
+}
+
+:root[data-mode="dark"] {
+  color-scheme: dark;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 3px 12px rgba(0, 0, 0, 0.55);
+  --shadow-3: 0 14px 38px rgba(0, 0, 0, 0.7);
+}
+
+/* ---------- Reading Room (default): walnut, parchment, brass ---------- */
+
+:root,
+:root[data-skin="reading-room"] {
+  --bg: #f4ecdc;
+  --bg-soft: #eadfc9;
+  --card: #fffaf1;
+  --ink: #332619;
+  --ink-soft: #5b4835;
+  --muted: #75604a;
+  --line: #e0d0b3;
+
+  --accent: #6b4a2e;
+  --accent-ink: #fffaf1;
+  --accent-soft: #efe2cc;
+  --accent-border: #dcc7a5;
+
+  --gold: #bf8a2a;
+  --gold-soft: #f8ecd2;
+  --gold-border: #e6cea0;
+  --gold-ink: #8a5f10;
+
+  --green: #45703f;
+  --green-soft: #e8f0e0;
+  --green-border: #c4d8b8;
+  --red: #a8402f;
+  --red-soft: #f8e5e0;
+  --red-border: #e6c3b9;
+
+  --header-solid: #4e3522;
+  --header-ink: #f7ecd9;
+  --header-dim: rgba(247, 236, 217, 0.62);
+
+  --shelf-grad: linear-gradient(180deg, #b08a5e 0%, #8a6741 45%, #6b4d2e 100%);
+  --page-texture: var(--noise);
+  --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(255, 206, 133, 0.4), transparent 68%);
+}
+
+:root[data-skin="reading-room"][data-mode="dark"] {
+  --bg: #1a1410;
+  --bg-soft: #241c15;
+  --card: #26201a;
+  --ink: #f2e7d6;
+  --ink-soft: #d3c2aa;
+  --muted: #9d8a73;
+  --line: #3a2e23;
+
+  --accent: #c79a5c;
+  --accent-ink: #241c15;
+  --accent-soft: #2f2519;
+  --accent-border: #46372a;
+
+  --gold: #e0b264;
+  --gold-soft: #2f2517;
+  --gold-border: #4a3a22;
+  --gold-ink: #edc884;
+
+  --green: #85b06e;
+  --green-soft: #1e2718;
+  --green-border: #33422a;
+  --red: #e08872;
+  --red-soft: #2c1a15;
+  --red-border: #4a2c22;
+
+  --header-solid: #261c14;
+  --header-ink: #f2e7d6;
+  --header-dim: rgba(242, 231, 214, 0.6);
+
+  --shelf-grad: linear-gradient(180deg, #6a4e33 0%, #4b3624 45%, #332416 100%);
+  --page-texture: var(--noise);
+  --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(255, 186, 92, 0.13), transparent 68%);
+}
+
+/* ---------- Cottage Garden: sage, cream, rose ---------- */
+
+:root[data-skin="cottage"] {
+  --bg: #f4f2e6;
+  --bg-soft: #e8e7d4;
+  --card: #fffef8;
+  --ink: #2d3830;
+  --ink-soft: #4f5c52;
+  --muted: #66725f;
+  --line: #ddddc7;
+
+  --accent: #4a6350;
+  --accent-ink: #fffef8;
+  --accent-soft: #e4ebdf;
+  --accent-border: #c7d6c4;
+
+  --gold: #c19a3a;
+  --gold-soft: #f6efd9;
+  --gold-border: #e3d3a5;
+  --gold-ink: #86661a;
+
+  --green: #3f7350;
+  --green-soft: #e4efe6;
+  --green-border: #bfd8c5;
+  --red: #b05563;
+  --red-soft: #f8e8ea;
+  --red-border: #e8c8ce;
+
+  --header-solid: #4c634a;
+  --header-ink: #f6f7ef;
+  --header-dim: rgba(246, 247, 239, 0.65);
+
+  --shelf-grad: linear-gradient(180deg, #c3b389 0%, #a3946c 50%, #857a55 100%);
+  --page-texture: var(--noise);
+  --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(214, 233, 190, 0.42), transparent 68%);
+}
+
+:root[data-skin="cottage"][data-mode="dark"] {
+  --bg: #141a15;
+  --bg-soft: #1c231c;
+  --card: #1e261f;
+  --ink: #e8efe6;
+  --ink-soft: #c3cfc1;
+  --muted: #8b998a;
+  --line: #2e3a2e;
+
+  --accent: #8cb494;
+  --accent-ink: #161d17;
+  --accent-soft: #243026;
+  --accent-border: #38453a;
+
+  --gold: #dcc06a;
+  --gold-soft: #2a2718;
+  --gold-border: #443f24;
+  --gold-ink: #e6d18d;
+
+  --green: #7dc08c;
+  --green-soft: #182619;
+  --green-border: #2b3d2d;
+  --red: #de8c96;
+  --red-soft: #2a1a1d;
+  --red-border: #452a2f;
+
+  --header-solid: #1d2a1b;
+  --header-ink: #e8efe6;
+  --header-dim: rgba(232, 239, 230, 0.6);
+
+  --shelf-grad: linear-gradient(180deg, #5c5540 0%, #43402f 50%, #2e2c20 100%);
+  --page-texture: var(--noise);
+  --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(150, 210, 160, 0.1), transparent 68%);
+}
+
+/* ---------- Dark Academia: oxblood, aged paper, candle gold ---------- */
+
+:root[data-skin="dark-academia"] {
+  --bg: #ece2d0;
+  --bg-soft: #ddd0b8;
+  --card: #f8f1e2;
+  --ink: #2b2018;
+  --ink-soft: #54443a;
+  --muted: #6f5f4d;
+  --line: #d8c9ad;
+
+  --accent: #5b2333;
+  --accent-ink: #f8f1e2;
+  --accent-soft: #ecdfd6;
+  --accent-border: #d5bfb4;
+
+  --gold: #9c7c1f;
+  --gold-soft: #f3e9cd;
+  --gold-border: #ddc999;
+  --gold-ink: #6f560d;
+
+  --green: #4a6141;
+  --green-soft: #e7ecdf;
+  --green-border: #c5d1b7;
+  --red: #8f2f28;
+  --red-soft: #f4e0dc;
+  --red-border: #dcb9b3;
+
+  --header-solid: #401a24;
+  --header-ink: #f2e6d2;
+  --header-dim: rgba(242, 230, 210, 0.62);
+
+  --shelf-grad: linear-gradient(180deg, #9a7f4e 0%, #776037 50%, #55462a 100%);
+  --page-texture: var(--noise);
+  --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(255, 226, 168, 0.4), transparent 68%);
+}
+
+:root[data-skin="dark-academia"][data-mode="dark"] {
+  --bg: #16110f;
+  --bg-soft: #1f1815;
+  --card: #221b17;
+  --ink: #ede1cd;
+  --ink-soft: #cdbda4;
+  --muted: #97866f;
+  --line: #362a23;
+
+  --accent: #b5566b;
+  --accent-ink: #1b1411;
+  --accent-soft: #2c1d21;
+  --accent-border: #452c33;
+
+  --gold: #d9b45c;
+  --gold-soft: #2c2416;
+  --gold-border: #473a20;
+  --gold-ink: #e6ca87;
+
+  --green: #86a56d;
+  --green-soft: #1d2417;
+  --green-border: #333d28;
+  --red: #dd8073;
+  --red-soft: #2a1815;
+  --red-border: #452622;
+
+  --header-solid: #200e14;
+  --header-ink: #ede1cd;
+  --header-dim: rgba(237, 225, 205, 0.6);
+
+  --shelf-grad: linear-gradient(180deg, #61492b 0%, #45331f 50%, #2e2215 100%);
+  --page-texture: var(--noise);
+  --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(255, 190, 100, 0.12), transparent 68%);
+}
+
+/* ---------- Modern: crisp navy and white, sans-serif ---------- */
+
+:root[data-skin="modern"] {
+  --serif: var(--sans);
+  --header-grain: none;
+
+  --bg: #f4f6fa;
+  --bg-soft: #e9edf4;
   --card: #ffffff;
   --ink: #1c2230;
   --ink-soft: #4a5263;
-  --muted: #7a8394;
-  --line: #e3e0d8;
+  --muted: #646d7d;
+  --line: #e2e6ee;
 
   --accent: #22304d;
   --accent-ink: #ffffff;
@@ -30,72 +293,19 @@
   --red-soft: #fdecea;
   --red-border: #f5c9c4;
 
-  --header-bg: #22304d;
+  --header-solid: #22304d;
   --header-ink: #ffffff;
   --header-dim: rgba(255, 255, 255, 0.62);
-  --shelf-edge: #d9cdb6;
 
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-
-  --r-sm: 9px;
-  --r: 14px;
-  --r-lg: 20px;
-
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --shadow-2: 0 3px 10px rgba(16, 24, 40, 0.12);
-  --shadow-3: 0 12px 34px rgba(16, 24, 40, 0.26);
-
-  --nav-h: 4.4rem;
+  --shelf-grad: linear-gradient(180deg, #d7dbe4, #c3c9d6);
+  --page-texture: none;
+  --page-glow: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark; }
-}
+:root[data-skin="modern"][data-mode="dark"] {
+  --serif: var(--sans);
+  --header-grain: none;
 
-:root[data-theme="dark"],
-:root[data-theme="auto"] { color-scheme: light; }
-
-/* Dark palette, applied for system-dark (unless forced light) and for an
-   explicit dark choice. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #12151c;
-    --bg-soft: #171b24;
-    --card: #1b202b;
-    --ink: #e9ecf2;
-    --ink-soft: #bcc3d0;
-    --muted: #8b93a3;
-    --line: #2c3342;
-
-    --accent: #5b7fd1;
-    --accent-ink: #0d1119;
-    --accent-soft: #232b3c;
-    --accent-border: #333d52;
-
-    --gold: #e8b64a;
-    --gold-soft: #2e2718;
-    --gold-border: #4a3d20;
-    --gold-ink: #f0cd80;
-
-    --green: #4ec27a;
-    --green-soft: #16281d;
-    --green-border: #24422f;
-    --red: #f0796c;
-    --red-soft: #2d1a19;
-    --red-border: #4a2926;
-
-    --header-bg: #0f1218;
-    --shelf-edge: #2f3644;
-
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-2: 0 3px 12px rgba(0, 0, 0, 0.5);
-    --shadow-3: 0 12px 34px rgba(0, 0, 0, 0.65);
-  }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
   --bg: #12151c;
   --bg-soft: #171b24;
   --card: #1b202b;
@@ -103,36 +313,48 @@
   --ink-soft: #bcc3d0;
   --muted: #8b93a3;
   --line: #2c3342;
+
   --accent: #5b7fd1;
   --accent-ink: #0d1119;
   --accent-soft: #232b3c;
   --accent-border: #333d52;
+
   --gold: #e8b64a;
   --gold-soft: #2e2718;
   --gold-border: #4a3d20;
   --gold-ink: #f0cd80;
+
   --green: #4ec27a;
   --green-soft: #16281d;
   --green-border: #24422f;
   --red: #f0796c;
   --red-soft: #2d1a19;
   --red-border: #4a2926;
-  --header-bg: #0f1218;
-  --shelf-edge: #2f3644;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 3px 12px rgba(0, 0, 0, 0.5);
-  --shadow-3: 0 12px 34px rgba(0, 0, 0, 0.65);
+
+  --header-solid: #0f1218;
+  --header-ink: #ffffff;
+  --header-dim: rgba(255, 255, 255, 0.62);
+
+  --shelf-grad: linear-gradient(180deg, #39414f, #2a303c);
+  --page-texture: none;
+  --page-glow: none;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
+  min-height: 100vh;
   font-family: var(--sans);
-  background: var(--bg);
   color: var(--ink);
   padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 1rem);
   -webkit-tap-highlight-color: transparent;
+
+  /* Lamplight from the top, paper grain over the whole page. */
+  background-color: var(--bg);
+  background-image: var(--page-glow), var(--page-texture);
+  background-repeat: no-repeat, repeat;
+  background-attachment: fixed, fixed;
 }
 
 .hidden { display: none !important; }
@@ -143,7 +365,8 @@ body {
    ============================================================ */
 
 .app-bar {
-  background: var(--header-bg);
+  background-color: var(--header-solid);
+  background-image: var(--header-grain);
   color: var(--header-ink);
   padding: calc(0.7rem + env(safe-area-inset-top, 0px)) 1rem 0.7rem;
   display: flex;
@@ -193,7 +416,9 @@ body {
 .shelf-tabs {
   display: flex;
   gap: 0.3rem;
-  background: var(--header-bg);
+  background-color: var(--header-solid);
+  background-image: var(--header-grain);
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.8);
   padding: 0 0.6rem 0.55rem;
   position: sticky;
   top: 0;
@@ -444,11 +669,23 @@ img.cover.missing { display: none; }
   flex-direction: column;
   gap: 0.45rem;
   cursor: pointer;
-  padding-bottom: 0.7rem;
-  border-bottom: 3px solid var(--shelf-edge);
-  border-radius: 1px;
   transition: transform 0.15s;
 }
+/* The wooden ledge each row of books sits on. Cells in a grid row stretch to
+   the same height, so these line up into one continuous shelf. */
+.grid-book::after {
+  content: "";
+  margin-top: auto;
+  /* Reach halfway into the column gutters so neighbouring ledges meet and
+     read as one continuous shelf across the row. */
+  margin-left: -0.45rem;
+  margin-right: -0.45rem;
+  height: 7px;
+  border-radius: 2px 2px 3px 3px;
+  background: var(--shelf-grad);
+  box-shadow: 0 3px 6px -1px rgba(40, 25, 10, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.grid-book > div:last-of-type { margin-bottom: 0.55rem; }
 .grid-book:hover { transform: translateY(-3px); }
 .grid-book:hover .cover-wrap { box-shadow: var(--shadow-3); }
 .grid-title {
@@ -958,6 +1195,39 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .settings-row .row-sub { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
 .settings-row .row-go { color: var(--muted); font-size: 0.9rem; }
 .seg { display: flex; gap: 0.35rem; }
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 0.7rem 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.theme-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset, var(--shadow-1); }
+.theme-swatch { display: flex; gap: 0.2rem; }
+.theme-swatch i {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+}
+.theme-name { font-family: var(--serif); font-weight: 600; font-size: 0.92rem; }
+.theme-blurb { font-size: 0.72rem; color: var(--muted); line-height: 1.35; }
 
 .household-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
