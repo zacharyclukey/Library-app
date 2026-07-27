@@ -63,6 +63,7 @@ const emptyFilter = () =>
      status: null, content: null, spice: null, language: null });
 let shelfFilter = emptyFilter();
 let shelfSort = "added";
+let groupBySeries = false;
 
 function currentProfile() {
   return localStorage.getItem(PROFILE_KEY);
@@ -164,6 +165,23 @@ function storeLinks(b) {
   ];
 }
 
+// Quietly say when edits are staying on the phone, so a dropped connection
+// never looks like lost work.
+function updateNetPill() {
+  const pill = $("#net-pill");
+  if (!navigator.onLine) {
+    pill.textContent = "Offline — changes are saved here and will sync later";
+    pill.className = "net-pill offline";
+  } else if (syncError) {
+    pill.textContent = "Sync paused — changes are safe on this phone";
+    pill.className = "net-pill warn";
+  } else {
+    pill.className = "net-pill hidden";
+  }
+}
+window.addEventListener("online", updateNetPill);
+window.addEventListener("offline", updateNetPill);
+
 // Fill in every declarative icon slot in the HTML shell.
 function paintIcons(root = document) {
   root.querySelectorAll("[data-ico]").forEach((el) => {
@@ -228,6 +246,99 @@ function renderNudge() {
   });
 }
 
+// ---------- reading stats ----------
+// Everything here is derived from data already on the shelves — no new
+// bookkeeping, just a look back at what's been read.
+
+function renderStatsScreen() {
+  const el = $("#stats-content");
+  const all = db.getAllBooks();
+  if (!all.length) {
+    el.innerHTML = `<p class="muted">Add a few books and this will fill in.</p>`;
+    return;
+  }
+
+  const finished = db.getBooksOnShelf("completed");
+  const year = new Date().getFullYear();
+  const finishedThisYear = finished.filter((b) => (b.finishedAt ?? "").startsWith(String(year)));
+  const pagesThisYear = finishedThisYear.reduce((n, b) => n + (Number(b.pageCount) || 0), 0);
+  const rated = all.map((b) => myRating(b)).filter(Boolean);
+  const avg = rated.length ? (rated.reduce((a, b) => a + b, 0) / rated.length).toFixed(1) : null;
+
+  const tally = (list) => {
+    const m = {};
+    list.forEach((k) => (m[k] = (m[k] ?? 0) + 1));
+    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  };
+  const topAuthors = tally(all.flatMap((b) => b.authors ?? []));
+  const topGenres = tally(all.flatMap((b) => flt.genresOf(b)));
+
+  // Books finished per month this year, as a small bar row.
+  const months = Array.from({ length: 12 }, () => 0);
+  finishedThisYear.forEach((b) => {
+    const m = new Date(b.finishedAt).getMonth();
+    if (!Number.isNaN(m)) months[m]++;
+  });
+  const peak = Math.max(...months, 1);
+  const monthNames = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+
+  const stat = (n, label) => `<div class="stat-tile"><b>${n}</b><span>${label}</span></div>`;
+  const bars = (rows) =>
+    rows.length
+      ? `<ul class="bar-list">${rows
+          .map(
+            ([name, n]) => `<li>
+              <span class="bar-label">${esc(name)}</span>
+              <span class="bar"><i style="width:${(n / rows[0][1]) * 100}%"></i></span>
+              <span class="bar-n">${n}</span>
+            </li>`
+          )
+          .join("")}</ul>`
+      : `<p class="muted">Not enough data yet.</p>`;
+
+  el.innerHTML = `
+    <div class="stat-grid">
+      ${stat(all.length, "books")}
+      ${stat(finished.length, "finished")}
+      ${stat(db.getOwnedBooks().length, "owned")}
+      ${stat(all.filter((b) => b.reading).length, "in progress")}
+    </div>
+
+    <div class="d-section" style="margin-top:1rem">
+      <div class="d-body" style="padding-top:0.8rem">
+        <span class="filter-label">${year} so far</span>
+        <p class="stat-line">${finishedThisYear.length} book${finishedThisYear.length === 1 ? "" : "s"} finished${
+          pagesThisYear ? ` · ${pagesThisYear.toLocaleString()} pages` : ""
+        }</p>
+        <div class="month-row">
+          ${months
+            .map(
+              (n, i) => `<span class="month" title="${n} in ${monthNames[i]}">
+                <i style="height:${Math.max((n / peak) * 100, 4)}%"></i>
+                <em>${monthNames[i]}</em>
+              </span>`
+            )
+            .join("")}
+        </div>
+        ${finishedThisYear.length === 0
+          ? `<p class="muted" style="font-size:0.78rem">Books get dated when you move them to Finished, so this fills in from here.</p>`
+          : ""}
+      </div>
+    </div>
+
+    <div class="d-section"><div class="d-body" style="padding-top:0.8rem">
+      <span class="filter-label">Most read authors</span>
+      ${bars(topAuthors)}
+    </div></div>
+
+    <div class="d-section"><div class="d-body" style="padding-top:0.8rem">
+      <span class="filter-label">Genres on your shelves</span>
+      ${bars(topGenres)}
+    </div></div>
+
+    ${avg ? `<p class="muted" style="margin-top:0.9rem">You rate books ★ ${avg} on average across ${rated.length} rated.</p>` : ""}`;
+}
+
 // ---------- toasts & undo ----------
 // Replaces browser confirm()/alert() popups: actions happen immediately and
 // a themed toast offers Undo, which feels native and makes mistakes cheap.
@@ -275,7 +386,7 @@ function undoable(message, book, apply) {
 // sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
 // stay as modals — they're short task flows on top of whatever you're doing.
 
-const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync"];
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats"];
 const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
 let currentScreen = "shelves";
 
@@ -292,12 +403,14 @@ function showScreen(name, { push = true } = {}) {
 
   // Sub-screens keep their parent's nav item lit.
   if (name === "profile" || name === "sync") $("#settings-btn").classList.add("active");
+  if (name === "stats") $("#nav-shelves").classList.add("active");
 
   if (name === "discover") renderDiscover();
   else if (name === "export") openExportScreen();
   else if (name === "settings") renderSettingsScreen();
   else if (name === "profile") renderProfileScreen();
   else if (name === "sync") renderSyncScreen();
+  else if (name === "stats") renderStatsScreen();
 
   if (push && history.state?.screen !== name) {
     history.pushState({ screen: name }, "");
@@ -392,7 +505,7 @@ function renderShelf() {
 
   bookList.className = "book-list " + viewMode;
   bookList.innerHTML = "";
-  renderQueue = books.slice();
+  renderQueue = groupBySeries ? groupIntoSeries(books) : books.slice();
   renderShowNames = allProfiles().length > 1;
   renderChunk();
   renderAzRail(books);
@@ -420,7 +533,40 @@ function renderHero() {
   ].filter(Boolean);
   el.innerHTML = `<strong>${greeting}, ${esc(me)}</strong>${
     facts.length ? " · " + esc(facts.join(" · ")) : ""
-  }`;
+  } <span class="hero-go">${icon("chevronLeft", "flip-x")}</span>`;
+}
+
+// Collect books under their series, standalones last, so a shelf can be
+// read as collections rather than a flat wall of covers. Returns a render
+// list where header entries sit inline with the books they introduce.
+function groupIntoSeries(books) {
+  const groups = new Map();
+  const loose = [];
+  for (const b of books) {
+    if (b.series?.name) {
+      if (!groups.has(b.series.name)) groups.set(b.series.name, []);
+      groups.get(b.series.name).push(b);
+    } else {
+      loose.push(b);
+    }
+  }
+  const out = [];
+  [...groups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .forEach(([name, list]) => {
+      list.sort(
+        (a, b) => (a.series.position ?? 99) - (b.series.position ?? 99) || a.title.localeCompare(b.title)
+      );
+      // How much of the series this shelf actually holds, when we know it.
+      const known = list.map((b) => seriesCache.get(b.id)?.books?.length).find(Boolean);
+      out.push({ __header: name, count: list.length, total: known ?? null });
+      out.push(...list);
+    });
+  if (loose.length) {
+    out.push({ __header: "Standalone", count: loose.length, total: null });
+    out.push(...loose);
+  }
+  return out;
 }
 
 // Cards are appended in chunks as you scroll, so a huge library opens as
@@ -436,7 +582,18 @@ function renderChunk() {
   const from = bookList.children.length;
   bookList.insertAdjacentHTML(
     "beforeend",
-    next.map((b) => (viewMode === "grid" ? gridCard(b, renderShowNames) : listCard(b, renderShowNames))).join("")
+    next
+      .map((item) =>
+        item.__header
+          ? `<h3 class="group-head">
+               <span>${esc(item.__header)}</span>
+               <span class="group-count">${item.count}${item.total ? ` of ${item.total}` : ""}</span>
+             </h3>`
+          : viewMode === "grid"
+            ? gridCard(item, renderShowNames)
+            : listCard(item, renderShowNames)
+      )
+      .join("")
   );
   for (let i = from; i < bookList.children.length; i++) {
     const card = bookList.children[i];
@@ -444,6 +601,7 @@ function renderChunk() {
     card.style.setProperty("--i", Math.min(i - from, 12)); // cap the stagger
   }
   next.forEach((b) => {
+    if (b.__header) return;
     if (flippedIds.has(b.id)) {
       bookList.querySelector(`[data-id="${CSS.escape(b.id)}"] .flip`)?.classList.add("flipped");
     }
@@ -470,7 +628,7 @@ function initialOf(b) {
 
 function renderAzRail(books) {
   const rail = $("#az-rail");
-  const useful = ["title", "author"].includes(shelfSort) && books.length >= 25;
+  const useful = !groupBySeries && ["title", "author"].includes(shelfSort) && books.length >= 25;
   rail.classList.toggle("hidden", !useful);
   if (!useful) return;
 
@@ -817,6 +975,14 @@ function renderFilterPanel() {
     panel.appendChild(chipGroup("Spice", flt.SPICE_OPTIONS, shelfFilter.spice, set("spice")));
   }
 
+  panel.appendChild(
+    chipGroup("Group", [["series", "📚 By series"]], groupBySeries ? "series" : null, (v) => {
+      groupBySeries = !!v;
+      renderFilterPanel();
+      renderShelf();
+    })
+  );
+
   const sortWrap = document.createElement("div");
   sortWrap.className = "filter-group";
   sortWrap.innerHTML = `<span class="filter-label">Sort by</span>`;
@@ -842,6 +1008,7 @@ function renderFilterPanel() {
   clear.addEventListener("click", () => {
     shelfFilter = emptyFilter();
     shelfSort = "added";
+    groupBySeries = false;
     renderFilterPanel();
     renderShelf();
   });
@@ -887,6 +1054,7 @@ function updateProfileChip() {
 }
 
 $("#profile-banner").addEventListener("click", () => showScreen("profile"));
+$("#shelf-hero").addEventListener("click", () => showScreen("stats"));
 
 // Names this phone could plausibly belong to: profiles already on books,
 // plus the names of everyone in the shared library.
@@ -1023,7 +1191,11 @@ async function handleFoundIsbn(isbn) {
       scanStatus.textContent = `“${book.title}” is already in your library.`;
       return;
     }
-    navigator.vibrate?.(30); // a small buzz: the barcode locked on
+    // Buzz and flash: unmistakable feedback that the barcode locked on.
+    navigator.vibrate?.(30);
+    scannerArea.classList.remove("hit");
+    void scannerArea.offsetWidth;
+    scannerArea.classList.add("hit");
     queueBookForConfirm(book);
   } catch (err) {
     scanStatus.textContent = "Lookup failed: " + err.message;
@@ -2157,6 +2329,15 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
+      <button class="settings-row" data-go="stats">
+        <span class="row-main">
+          <span class="row-icon">${icon("books")}</span>
+          <span>Your reading
+            <span class="row-sub">Totals, this year, most-read authors and genres</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
       <button class="settings-row" data-go="import">
         <span class="row-main">
           <span class="row-icon">${icon("download")}</span>
@@ -2288,6 +2469,7 @@ function renderSettingsScreen() {
       const target = btn.dataset.go;
       if (target === "profile") showScreen("profile");
       else if (target === "sync") showScreen("sync");
+      else if (target === "stats") showScreen("stats");
       else $("#import-input").click();
     })
   );
@@ -2455,6 +2637,7 @@ function onSyncError(err) {
 }
 
 function updateSyncIndicator() {
+  updateNetPill();
   const dot = $("#sync-dot");
   const waiting = !!sync.pendingJoin() && !sync.isActive();
   const attention = waiting || syncRequests.length > 0;
@@ -2774,6 +2957,7 @@ async function backfillSubjects() {
 
 // ---------- init ----------
 paintIcons();
+updateNetPill();
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }

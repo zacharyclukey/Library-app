@@ -99,6 +99,14 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Built for big shelves** 📚 — cards render in chunks as you scroll (a
   300-book shelf paints as fast as a small one), an A–Z rail jumps you through
   the list when sorted by title or author, and search is debounced.
+- **Group by series** 🗂️ — a toggle in the filter panel collects each shelf into
+  its series (ordered by book number, with standalones last), so a big library
+  reads as collections rather than a wall of covers.
+- **Your reading** 📊 — tap the greeting (or Settings) for totals, books and
+  pages finished this year with a per-month bar row, most-read authors, and the
+  genres on your shelves. All derived from data already on the shelves.
+- **Honest connection status** — when you're offline or sync is paused, a quiet
+  pill says so and reassures you that changes are saved on the phone.
 - **Never homework** 🌿 — there is deliberately no "N books need rating" counter.
   At most one finished-but-unrated book is offered at a time, rateable in a
   single tap and easy to wave off (which stays quiet for days).
