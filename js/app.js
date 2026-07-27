@@ -130,6 +130,61 @@ function storeLinks(b) {
   ];
 }
 
+// ---------- screen router ----------
+// Shelves / Discover / Export / Settings (and the Profile and Shared library
+// sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
+// stay as modals — they're short task flows on top of whatever you're doing.
+
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync"];
+const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
+let currentScreen = "shelves";
+
+function showScreen(name, { push = true } = {}) {
+  if (!SCREENS.includes(name)) name = "shelves";
+  currentScreen = name;
+
+  SCREENS.forEach((s) =>
+    $(`#screen-${s}`).classList.toggle("active", s === name)
+  );
+  Object.entries(SCREEN_NAV).forEach(([screen, id]) =>
+    $(`#${id}`).classList.toggle("active", screen === name)
+  );
+
+  // Sub-screens keep their parent's nav item lit.
+  if (name === "profile" || name === "sync") $("#settings-btn").classList.add("active");
+
+  if (name === "discover") renderDiscover();
+  else if (name === "export") openExportScreen();
+  else if (name === "settings") renderSettingsScreen();
+  else if (name === "profile") renderProfileScreen();
+  else if (name === "sync") renderSyncScreen();
+
+  if (push && history.state?.screen !== name) {
+    history.pushState({ screen: name }, "");
+    navDepth++;
+  }
+  window.scrollTo({ top: 0 });
+}
+
+// How many entries we've pushed, so the in-app back arrow can pop history
+// instead of stacking more entries — otherwise leaving the app would take as
+// many presses of the phone's back button as screens you'd visited.
+let navDepth = 0;
+
+window.addEventListener("popstate", (e) => {
+  navDepth = Math.max(0, navDepth - 1);
+  showScreen(e.state?.screen ?? "shelves", { push: false });
+});
+
+function goBack(fallback = "shelves") {
+  if (navDepth > 0) history.back();
+  else showScreen(fallback);
+}
+
+document.querySelectorAll("[data-back]").forEach((btn) =>
+  btn.addEventListener("click", () => goBack(btn.dataset.back || "shelves"))
+);
+
 // ---------- rendering ----------
 
 function esc(s) {
@@ -443,8 +498,6 @@ function renderProfileFilter(show) {
 
 // ---------- profile UI ----------
 
-const profileModal = $("#profile-modal");
-
 function updateProfileChip() {
   const me = currentProfile();
   $("#profile-avatar").textContent = me ? me[0].toUpperCase() : "?";
@@ -454,10 +507,7 @@ function updateProfileChip() {
   $("#profile-banner").classList.toggle("hidden", !!me);
 }
 
-$("#profile-banner").addEventListener("click", () => {
-  renderProfileModal();
-  profileModal.showModal();
-});
+$("#profile-banner").addEventListener("click", () => showScreen("profile"));
 
 // Names this phone could plausibly belong to: profiles already on books,
 // plus the names of everyone in the shared library.
@@ -469,12 +519,9 @@ function suggestedProfiles() {
   return [...names].sort();
 }
 
-$("#profile-chip").addEventListener("click", () => {
-  renderProfileModal();
-  profileModal.showModal();
-});
+$("#profile-chip").addEventListener("click", () => showScreen("profile"));
 
-function renderProfileModal() {
+function renderProfileScreen() {
   const el = $("#profile-content");
   const me = currentProfile();
   const profiles = suggestedProfiles();
@@ -508,8 +555,8 @@ function renderProfileModal() {
       localStorage.setItem(PROFILE_KEY, btn.dataset.pickProfile);
       memberFilter = "me";
       updateProfileChip();
-      profileModal.close();
       renderShelf();
+      showScreen("shelves");
     })
   );
   $("#new-profile-form").addEventListener("submit", (e) => {
@@ -519,8 +566,8 @@ function renderProfileModal() {
     localStorage.setItem(PROFILE_KEY, name);
     memberFilter = "me";
     updateProfileChip();
-    profileModal.close();
     renderShelf();
+    showScreen("shelves");
   });
 }
 
@@ -987,14 +1034,10 @@ async function renderSeriesSection(book) {
 
 // ---------- discover (recommendations) ----------
 
-const discoverModal = $("#discover-modal");
 let recFilter = { genre: null, length: null, age: null };
 let recsCache = null; // { key, recs } — keyed on filters + library size
 
-$("#discover-btn").addEventListener("click", () => {
-  discoverModal.showModal();
-  renderDiscover();
-});
+$("#discover-btn").addEventListener("click", () => showScreen("discover"));
 
 function renderDiscover() {
   const el = $("#discover-content");
@@ -1166,16 +1209,16 @@ function renderRecs(el, recs) {
 
 // ---------- export ----------
 
-const exportModal = $("#export-modal");
 let exportScope = null;      // shelf key, or "all"
 let exportUseView = true;    // honour the current search/filters/profile view
 
-$("#export-btn").addEventListener("click", () => {
+function openExportScreen() {
   exportScope = currentShelf;
   exportUseView = true;
-  renderExportModal();
-  exportModal.showModal();
-});
+  renderExportScreen();
+}
+
+$("#export-btn").addEventListener("click", () => showScreen("export"));
 
 function exportBooks() {
   if (exportScope === "all") return db.getAllBooks();
@@ -1187,7 +1230,7 @@ function exportTitle() {
   return exportScope === "all" ? "My Library" : `${SHELF_LABEL[exportScope]} shelf`;
 }
 
-function renderExportModal() {
+function renderExportScreen() {
   const el = $("#export-content");
   const books = exportBooks();
   const scopes = [...SHELVES.map((s) => [s, `${SHELF_ICON[s]} ${SHELF_LABEL[s]}`]), ["all", "📚 Everything"]];
@@ -1243,12 +1286,12 @@ function renderExportModal() {
   el.querySelectorAll("[data-scope]").forEach((btn) =>
     btn.addEventListener("click", () => {
       exportScope = btn.dataset.scope;
-      renderExportModal();
+      renderExportScreen();
     })
   );
   $("#export-view-check")?.addEventListener("change", (e) => {
     exportUseView = e.target.checked;
-    renderExportModal();
+    renderExportScreen();
   });
   el.querySelectorAll("[data-format]").forEach((btn) =>
     btn.addEventListener("click", () => runExport(btn.dataset.format))
@@ -1336,14 +1379,9 @@ async function runExport(format) {
 
 // ---------- settings ----------
 
-const settingsModal = $("#settings-modal");
+$("#settings-btn").addEventListener("click", () => showScreen("settings"));
 
-$("#settings-btn").addEventListener("click", () => {
-  renderSettingsModal();
-  settingsModal.showModal();
-});
-
-function renderSettingsModal() {
+function renderSettingsScreen() {
   const el = $("#settings-content");
   const me = currentProfile();
   const household = sync.isActive()
@@ -1438,7 +1476,7 @@ function renderSettingsModal() {
         await navigator.storage?.persist?.();
       } catch { /* status line reports the outcome */ }
     }
-    renderSettingsModal();
+    renderSettingsScreen();
   });
 
   $("#medium-toggle").addEventListener("click", () => {
@@ -1448,34 +1486,27 @@ function renderSettingsModal() {
     if (!next && ["ebook", "audio"].includes(shelfFilter.format)) {
       shelfFilter.format = null;
     }
-    renderSettingsModal();
+    renderSettingsScreen();
     renderShelf();
   });
   el.querySelectorAll("[data-skin]").forEach((btn) =>
     btn.addEventListener("click", () => {
       themes.setSkin(btn.dataset.skin);
-      renderSettingsModal();
+      renderSettingsScreen();
     })
   );
   el.querySelectorAll("[data-mode]").forEach((btn) =>
     btn.addEventListener("click", () => {
       themes.setMode(btn.dataset.mode);
-      renderSettingsModal();
+      renderSettingsScreen();
     })
   );
   el.querySelectorAll("[data-go]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const target = btn.dataset.go;
-      settingsModal.close();
-      if (target === "profile") {
-        renderProfileModal();
-        profileModal.showModal();
-      } else if (target === "sync") {
-        renderSyncModal();
-        syncModal.showModal();
-      } else {
-        $("#import-input").click();
-      }
+      if (target === "profile") showScreen("profile");
+      else if (target === "sync") showScreen("sync");
+      else $("#import-input").click();
     })
   );
 }
@@ -1519,12 +1550,12 @@ $("#import-input").addEventListener("change", async (e) => {
 
 $("#nav-shelves").addEventListener("click", () => {
   document.querySelectorAll("dialog[open]").forEach((d) => d.close());
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (currentScreen === "shelves") window.scrollTo({ top: 0, behavior: "smooth" });
+  else showScreen("shelves");
 });
 
 // ---------- shared library (sync) ----------
 
-const syncModal = $("#sync-modal");
 let syncError = null;
 let syncMembers = [];
 let syncRequests = [];
@@ -1534,9 +1565,9 @@ function onMembers(members, requests = []) {
   syncRequests = requests;
   updateSyncIndicator();
   updateRequestBanner();
-  if (syncModal.open) renderSyncModal();
+  if (currentScreen === "sync") renderSyncScreen();
   // Late-arriving member names make good profile suggestions on first run.
-  if (profileModal.open && !currentProfile()) renderProfileModal();
+  if (currentScreen === "profile" && !currentProfile()) renderProfileScreen();
 }
 
 // A pending join request must be impossible to miss — the requester is
@@ -1554,10 +1585,7 @@ function updateRequestBanner() {
   banner.classList.remove("hidden");
 }
 
-$("#request-banner").addEventListener("click", () => {
-  renderSyncModal();
-  syncModal.showModal();
-});
+$("#request-banner").addEventListener("click", () => showScreen("sync"));
 
 function onJoinResolved(approved, libName) {
   syncError = approved
@@ -1565,7 +1593,7 @@ function onJoinResolved(approved, libName) {
     : `Your request to join “${libName}” was declined.`;
   updateSyncIndicator();
   renderShelf();
-  if (syncModal.open) renderSyncModal();
+  if (currentScreen === "sync") renderSyncScreen();
 }
 
 // Options every start/join/create call needs, so the member list and this
@@ -1634,7 +1662,7 @@ function onRemoteBooks(books) {
 function onSyncError(err) {
   syncError = err.message;
   updateSyncIndicator();
-  if (syncModal.open) renderSyncModal();
+  if (currentScreen === "sync") renderSyncScreen();
 }
 
 function updateSyncIndicator() {
@@ -1653,7 +1681,7 @@ function updateSyncIndicator() {
         : "Sync on";
 }
 
-function renderSyncModal() {
+function renderSyncScreen() {
   const el = $("#sync-content");
 
   if (!sync.isConfigured()) {
@@ -1696,7 +1724,7 @@ function renderSyncWaiting(el) {
     await sync.cancelPending();
     syncError = null;
     updateSyncIndicator();
-    renderSyncModal();
+    renderSyncScreen();
   });
 }
 
@@ -1818,7 +1846,7 @@ function renderSyncActive(el) {
       syncMembers = [];
       syncError = null;
       updateSyncIndicator();
-      renderSyncModal();
+      renderSyncScreen();
     }
   });
 }
@@ -1879,7 +1907,7 @@ function renderSyncJoin(el) {
       syncError = err.message;
     }
     updateSyncIndicator();
-    renderSyncModal();
+    renderSyncScreen();
   });
 }
 
@@ -1911,7 +1939,7 @@ async function activateNamed(name, password, create) {
     syncError = err.message;
   }
   updateSyncIndicator();
-  renderSyncModal();
+  renderSyncScreen();
 }
 
 async function initSync() {
@@ -1959,14 +1987,12 @@ async function backfillSubjects() {
 requestPersistence();
 themes.apply();
 themes.watchSystem(() => {
-  if (settingsModal.open) renderSettingsModal();
+  if (currentScreen === "settings") renderSettingsScreen();
 });
 updateViewToggle();
 updateProfileChip();
 renderShelf();
 initSync();
 backfillSubjects();
-if (!currentProfile()) {
-  renderProfileModal();
-  profileModal.showModal();
-}
+history.replaceState({ screen: "shelves" }, "");
+if (!currentProfile()) showScreen("profile");

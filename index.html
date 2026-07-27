@@ -43,6 +43,8 @@
     </button>
   </header>
 
+  <main>
+  <section id="screen-shelves" class="screen active">
   <nav class="shelf-tabs" role="tablist">
     <button class="tab active" data-shelf="owned" role="tab" aria-selected="true">
       <span class="tab-icon">📗</span>
@@ -66,7 +68,6 @@
     </button>
   </nav>
 
-  <main>
     <button id="profile-banner" class="profile-banner hidden">
       👤 Who's using this phone? <span class="banner-action">Choose a profile</span>
     </button>
@@ -96,6 +97,53 @@
       <p id="empty-text">No books on this shelf yet.</p>
       <button id="empty-action" class="primary-btn">＋ Add your first book</button>
     </div>
+  </section>
+
+  <!-- ============ Discover screen ============ -->
+  <section id="screen-discover" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-back aria-label="Back to shelves">‹</button>
+      <h2>✨ Recommended for you</h2>
+    </div>
+    <div class="screen-body" id="discover-content"></div>
+  </section>
+
+  <!-- ============ Export screen ============ -->
+  <section id="screen-export" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-back aria-label="Back to shelves">‹</button>
+      <h2>📤 Export a shelf</h2>
+    </div>
+    <div class="screen-body" id="export-content"></div>
+  </section>
+
+  <!-- ============ Settings screen ============ -->
+  <section id="screen-settings" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-back aria-label="Back to shelves">‹</button>
+      <h2>⚙️ Settings</h2>
+    </div>
+    <div class="screen-body" id="settings-content"></div>
+    <input type="file" id="import-input" accept="application/json" hidden />
+  </section>
+
+  <!-- ============ Profile screen ============ -->
+  <section id="screen-profile" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-back="settings" aria-label="Back">‹</button>
+      <h2>👤 Profiles</h2>
+    </div>
+    <div class="screen-body" id="profile-content"></div>
+  </section>
+
+  <!-- ============ Shared library screen ============ -->
+  <section id="screen-sync" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-back="settings" aria-label="Back">‹</button>
+      <h2>👩‍❤️‍👨 Shared Library</h2>
+    </div>
+    <div class="screen-body" id="sync-content"></div>
+  </section>
   </main>
 
   <nav class="bottom-nav">
@@ -196,51 +244,10 @@
     <div id="detail-content"></div>
   </dialog>
 
-  <!-- ============ Profile modal ============ -->
-  <dialog id="profile-modal" class="modal">
-    <div class="modal-header">
-      <h2>👤 Profiles</h2>
-      <button class="close-btn" data-close="profile-modal" aria-label="Close">✕</button>
-    </div>
-    <div id="profile-content"></div>
-  </dialog>
 
-  <!-- ============ Discover modal ============ -->
-  <dialog id="discover-modal" class="modal">
-    <div class="modal-header">
-      <h2>✨ Recommended for you</h2>
-      <button class="close-btn" data-close="discover-modal" aria-label="Close">✕</button>
-    </div>
-    <div id="discover-content"></div>
-  </dialog>
 
-  <!-- ============ Export modal ============ -->
-  <dialog id="export-modal" class="modal">
-    <div class="modal-header">
-      <h2>📤 Export a shelf</h2>
-      <button class="close-btn" data-close="export-modal" aria-label="Close">✕</button>
-    </div>
-    <div id="export-content"></div>
-  </dialog>
 
-  <!-- ============ Settings modal ============ -->
-  <dialog id="settings-modal" class="modal">
-    <div class="modal-header">
-      <h2>⚙️ Settings</h2>
-      <button class="close-btn" data-close="settings-modal" aria-label="Close">✕</button>
-    </div>
-    <div id="settings-content"></div>
-    <input type="file" id="import-input" accept="application/json" hidden />
-  </dialog>
 
-  <!-- ============ Shared library (sync) modal ============ -->
-  <dialog id="sync-modal" class="modal">
-    <div class="modal-header">
-      <h2>👩‍❤️‍👨 Shared Library</h2>
-      <button class="close-btn" data-close="sync-modal" aria-label="Close">✕</button>
-    </div>
-    <div id="sync-content"></div>
-  </dialog>
 
   <script type="module" src="js/app.js"></script>
 </body>

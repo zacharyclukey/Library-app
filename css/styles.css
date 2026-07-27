@@ -416,6 +416,7 @@ body {
 .shelf-tabs {
   display: flex;
   gap: 0.3rem;
+  margin-top: -1px;   /* meet the app bar with no seam */
   background-color: var(--header-solid);
   background-image: var(--header-grain);
   box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.8);
@@ -464,6 +465,57 @@ body {
   font-weight: 600;
 }
 .tab.active .count { background: var(--accent-soft); color: var(--ink-soft); }
+
+/* ============================================================
+   Screens
+   ============================================================ */
+
+.screen { display: none; }
+.screen.active { display: block; animation: screen-in 0.22s ease-out; }
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.1rem 1rem 0.35rem;
+}
+.screen-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.back-btn {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding-bottom: 0.18em;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+}
+.back-btn:hover { border-color: var(--accent); }
+
+.screen-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0.5rem 1rem 1.5rem;
+}
+.screen-body > p:first-child { margin-top: 0.35rem; }
 
 /* ============================================================
    Toolbar: search, filters, view toggle
@@ -1307,8 +1359,8 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .member-main { flex: 1; min-width: 0; }
 .member-main em { font-style: normal; color: var(--muted); font-size: 0.8rem; }
 .member-sub { display: block; font-size: 0.74rem; color: var(--muted); }
-#sync-content p, #export-content p, #settings-content p { font-size: 0.88rem; line-height: 1.55; }
-#sync-content a, #settings-content a { color: var(--accent); }
+.screen-body p { font-size: 0.9rem; line-height: 1.6; }
+.screen-body a { color: var(--accent); }
 
 .credit { display: block; text-align: center; color: var(--muted); font-size: 0.72rem; margin-top: 1rem; }
 
