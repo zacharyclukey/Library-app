@@ -1436,10 +1436,31 @@ function onMembers(members, requests = []) {
   syncMembers = members;
   syncRequests = requests;
   updateSyncIndicator();
+  updateRequestBanner();
   if (syncModal.open) renderSyncModal();
   // Late-arriving member names make good profile suggestions on first run.
   if (profileModal.open && !currentProfile()) renderProfileModal();
 }
+
+// A pending join request must be impossible to miss — the requester is
+// locked out until someone here approves, so a small dot isn't enough.
+function updateRequestBanner() {
+  const banner = $("#request-banner");
+  if (!syncRequests.length) {
+    banner.classList.add("hidden");
+    return;
+  }
+  const names = syncRequests.map((r) => r.name ?? "Someone");
+  banner.innerHTML = `🔔 <strong>${esc(names.join(" and "))}</strong>
+    ${names.length === 1 ? "wants" : "want"} to join your shared library
+    <span class="banner-action">Review</span>`;
+  banner.classList.remove("hidden");
+}
+
+$("#request-banner").addEventListener("click", () => {
+  renderSyncModal();
+  syncModal.showModal();
+});
 
 function onJoinResolved(approved, libName) {
   syncError = approved

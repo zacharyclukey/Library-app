@@ -1298,6 +1298,11 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
   box-shadow: var(--shadow-1);
 }
 .banner-action { text-decoration: underline; }
+.profile-banner.request {
+  background: var(--green-soft);
+  border-color: var(--green-border);
+  color: var(--green);
+}
 .member-list .avatar { width: 1.9rem; height: 1.9rem; font-size: 0.9rem; }
 .member-main { flex: 1; min-width: 0; }
 .member-main em { font-style: normal; color: var(--muted); font-size: 0.8rem; }
