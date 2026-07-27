@@ -59,9 +59,10 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   on the other; series tracking counts everyone's books), with a member list
   showing who's connected and when they were last active. The password never
   leaves your devices — it's used on-phone to derive the library's storage
-  location (PBKDF2), and creating a library that already exists is refused
-  rather than silently merged. Runs on Firebase's free tier with a one-time
-  setup — see [SETUP-SYNC.md](SETUP-SYNC.md).
+  location (PBKDF2), creating a library that already exists is refused rather
+  than silently merged, and new devices must be **approved by an existing
+  member** before any books flow in either direction. Runs on Firebase's free
+  tier with a one-time setup — see [SETUP-SYNC.md](SETUP-SYNC.md).
 
 ## Running it
 

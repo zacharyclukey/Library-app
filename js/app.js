@@ -418,6 +418,24 @@ function updateProfileChip() {
   const me = currentProfile();
   $("#profile-avatar").textContent = me ? me[0].toUpperCase() : "?";
   $("#profile-name").textContent = me ?? "Set profile";
+  // If the first-run prompt was dismissed, keep a visible nudge so the
+  // profile doesn't silently stay unset.
+  $("#profile-banner").classList.toggle("hidden", !!me);
+}
+
+$("#profile-banner").addEventListener("click", () => {
+  renderProfileModal();
+  profileModal.showModal();
+});
+
+// Names this phone could plausibly belong to: profiles already on books,
+// plus the names of everyone in the shared library.
+function suggestedProfiles() {
+  const names = new Set(allProfiles());
+  syncMembers.forEach((mem) => {
+    if (mem.name && mem.name !== "Someone") names.add(mem.name);
+  });
+  return [...names].sort();
 }
 
 $("#profile-chip").addEventListener("click", () => {
@@ -428,11 +446,15 @@ $("#profile-chip").addEventListener("click", () => {
 function renderProfileModal() {
   const el = $("#profile-content");
   const me = currentProfile();
-  const profiles = allProfiles();
+  const profiles = suggestedProfiles();
   el.innerHTML = `
     <p>Profiles keep each person's <strong>To Read, Completed and Wishlist</strong>
     separate, while the <strong>Owned</strong> shelf stays shared. Pick who's using
     this phone:</p>
+    ${profiles.length && !me
+      ? `<p class="muted" style="font-size:0.8rem;margin-top:-0.3rem">Tap your name
+         if it's here — these come from your shared library and shelves.</p>`
+      : ""}
     <div class="profile-list">
       ${profiles
         .map(
@@ -1354,9 +1376,23 @@ $("#nav-shelves").addEventListener("click", () => {
 const syncModal = $("#sync-modal");
 let syncError = null;
 let syncMembers = [];
+let syncRequests = [];
 
-function onMembers(members) {
+function onMembers(members, requests = []) {
   syncMembers = members;
+  syncRequests = requests;
+  updateSyncIndicator();
+  if (syncModal.open) renderSyncModal();
+  // Late-arriving member names make good profile suggestions on first run.
+  if (profileModal.open && !currentProfile()) renderProfileModal();
+}
+
+function onJoinResolved(approved, libName) {
+  syncError = approved
+    ? null
+    : `Your request to join “${libName}” was declined.`;
+  updateSyncIndicator();
+  renderShelf();
   if (syncModal.open) renderSyncModal();
 }
 
@@ -1431,9 +1467,18 @@ function onSyncError(err) {
 
 function updateSyncIndicator() {
   const dot = $("#sync-dot");
-  dot.classList.toggle("hidden", !sync.isActive());
+  const waiting = !!sync.pendingJoin() && !sync.isActive();
+  const attention = waiting || syncRequests.length > 0;
+  dot.classList.toggle("hidden", !(sync.isActive() || waiting));
   dot.classList.toggle("error", !!syncError);
-  dot.title = syncError ? "Sync error: " + syncError : "Sync on";
+  dot.classList.toggle("pending", attention && !syncError);
+  dot.title = syncError
+    ? "Sync error: " + syncError
+    : waiting
+      ? "Waiting for join approval"
+      : syncRequests.length
+        ? `${syncRequests.length} join request${syncRequests.length === 1 ? "" : "s"} waiting`
+        : "Sync on";
 }
 
 function renderSyncModal() {
@@ -1454,13 +1499,71 @@ function renderSyncModal() {
 
   if (sync.currentHousehold() && sync.isActive()) {
     renderSyncActive(el);
+  } else if (sync.pendingJoin()) {
+    renderSyncWaiting(el);
   } else {
     renderSyncJoin(el);
   }
 }
 
+function renderSyncWaiting(el) {
+  const libName = sync.pendingJoin()?.libName ?? "the library";
+  el.innerHTML = `
+    <p>⏳ <strong>Waiting for approval.</strong></p>
+    <p>Your request to join <strong>“${esc(libName)}”</strong> has been sent.
+    A current member needs to approve it — ask them to open
+    <em>Settings → Shared library</em> on their phone and tap Approve.</p>
+    <p class="muted" style="font-size:0.82rem">You can close this — the app keeps
+    checking and connects automatically once you're approved. No books are
+    shared in either direction until then.</p>
+    ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
+    <div class="detail-actions">
+      <button id="cancel-join-btn" class="danger-btn">Cancel request</button>
+    </div>`;
+  $("#cancel-join-btn").addEventListener("click", async () => {
+    await sync.cancelPending();
+    syncError = null;
+    updateSyncIndicator();
+    renderSyncModal();
+  });
+}
+
+function requestsHtml() {
+  if (!syncRequests.length) return "";
+  return `
+    <div class="settings-section">
+      <span class="filter-label">Join requests</span>
+      <ul class="member-list">
+        ${syncRequests
+          .map(
+            (r) => `
+          <li class="request">
+            <span class="avatar">${esc((r.name ?? "?")[0].toUpperCase())}</span>
+            <span class="member-main">
+              <strong>${esc(r.name ?? "Someone")}</strong> wants to join
+              <span class="member-sub">${esc(timeAgo(r.requestedAt))}</span>
+            </span>
+            <button class="approve-btn" data-approve="${esc(r.deviceId)}">Approve</button>
+            <button class="link-btn" data-deny="${esc(r.deviceId)}">Deny</button>
+          </li>`
+          )
+          .join("")}
+      </ul>
+    </div>`;
+}
+
+function wireRequestButtons(el) {
+  el.querySelectorAll("[data-approve]").forEach((btn) =>
+    btn.addEventListener("click", () => sync.approveJoin(btn.dataset.approve))
+  );
+  el.querySelectorAll("[data-deny]").forEach((btn) =>
+    btn.addEventListener("click", () => sync.denyJoin(btn.dataset.deny))
+  );
+}
+
 function renderSyncActive(el) {
-  const memberBlock = `
+  const requestBlock = requestsHtml();
+  const memberBlock = requestBlock + `
     <div class="settings-section">
       <span class="filter-label">Who's in this library (${syncMembers.length || "…"})</span>
       ${membersHtml()}
@@ -1536,6 +1639,7 @@ function renderSyncActive(el) {
   }
 
   wireMemberButtons(el);
+  wireRequestButtons(el);
   $("#leave-btn").addEventListener("click", () => {
     if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
       sync.leave();
@@ -1610,14 +1714,27 @@ function renderSyncJoin(el) {
 async function activateNamed(name, password, create) {
   syncError = null;
   try {
-    await sync.openNamed({
-      name,
-      password,
-      create,
-      onRemote: onRemoteBooks,
-      onError: onSyncError,
-      ...syncOpts(),
-    });
+    if (create) {
+      await sync.openNamed({
+        name,
+        password,
+        create: true,
+        onRemote: onRemoteBooks,
+        onError: onSyncError,
+        ...syncOpts(),
+      });
+    } else {
+      await sync.requestJoin({
+        name,
+        password,
+        localBooks: () => db.getAllBooks(),
+        onRemote: onRemoteBooks,
+        onError: onSyncError,
+        onMembers,
+        profileName: currentProfile(),
+        onResolved: onJoinResolved,
+      });
+    }
   } catch (err) {
     syncError = err.message;
   }
@@ -1626,6 +1743,17 @@ async function activateNamed(name, password, create) {
 }
 
 async function initSync() {
+  if (sync.isConfigured() && !sync.currentHousehold() && sync.pendingJoin()) {
+    sync.watchPending({
+      localBooks: () => db.getAllBooks(),
+      onRemote: onRemoteBooks,
+      onError: onSyncError,
+      onMembers,
+      profileName: currentProfile(),
+      onResolved: onJoinResolved,
+    });
+    updateSyncIndicator();
+  }
   if (sync.isConfigured() && sync.currentHousehold()) {
     try {
       await sync.start(onRemoteBooks, onSyncError, syncOpts());
@@ -1656,6 +1784,9 @@ async function backfillSubjects() {
 }
 
 // ---------- init ----------
+// Ask the browser to protect this site's storage from eviction — without it,
+// iOS in particular treats the library as disposable cache.
+navigator.storage?.persist?.().catch(() => {});
 themes.apply();
 themes.watchSystem(() => {
   if (settingsModal.open) renderSettingsModal();

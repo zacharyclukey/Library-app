@@ -66,10 +66,14 @@ hiding these values.)
 After GitHub Pages redeploys (~1 minute):
 
 1. **Your phone:** open the app → **Settings → Shared library**. Enter a
-   library name (e.g. *Lukey Library*) and a password (6+ characters), then tap
+   library name (e.g. *Lukey Library*) and a password (8+ characters), then tap
    **Create new library**.
 2. **Partner's phone:** same screen — enter the **same name and password** →
-   **Join library**.
+   **Join library**. This files a join request.
+3. **Back on your phone:** a gold dot appears on Settings — open
+   **Shared library** and tap **Approve** next to their name. Their phone
+   connects automatically within a few seconds (no books are shared in either
+   direction until you approve, and you can Deny anything unexpected).
 
 Done. Both phones now share one library: adds, shelf moves, and deletions sync
 in real time, existing books on each phone are merged in when joining, and the

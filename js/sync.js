@@ -32,6 +32,10 @@ const META_ID = "_meta";
 // unchanged, and so they arrive on the same snapshot as the books — no extra
 // reads. Everything "_"-prefixed is filtered out of the book list.
 const MEMBER_PREFIX = "_member:";
+// Join requests are docs too: written by the joining device, flipped to
+// approved/denied by an existing member, watched by the joiner.
+const JOIN_PREFIX = "_join:";
+const PENDING_KEY = "shelfie.pendingJoin.v1";
 
 let fsdb = null; // Firestore instance
 let m = null;    // firestore module namespace
@@ -128,12 +132,17 @@ export async function start(onRemote, onError, opts = {}) {
     (snap) => {
       const books = [];
       const members = [];
+      const requests = [];
       for (const d of snap.docs) {
         if (d.id.startsWith(MEMBER_PREFIX)) members.push(d.data());
-        else if (!d.id.startsWith("_")) books.push(d.data());
+        else if (d.id.startsWith(JOIN_PREFIX)) {
+          const r = d.data();
+          if (r.status === "pending") requests.push(r);
+        } else if (!d.id.startsWith("_")) books.push(d.data());
       }
       members.sort((a, b) => (a.joinedAt ?? "").localeCompare(b.joinedAt ?? ""));
-      opts.onMembers?.(members);
+      requests.sort((a, b) => (a.requestedAt ?? "").localeCompare(b.requestedAt ?? ""));
+      opts.onMembers?.(members, requests);
 
       if (firstSnapshot) {
         firstSnapshot = false;
@@ -179,6 +188,143 @@ export function removeMember(id = deviceId()) {
   const libId = currentHousehold();
   if (!libId || !m) return Promise.resolve();
   return m.deleteDoc(bookDoc(libId, MEMBER_PREFIX + id)).catch(() => {});
+}
+
+// ---------- join approval ----------
+
+export function pendingJoin() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_KEY));
+  } catch {
+    return null;
+  }
+}
+
+let pendingTimer = null;
+
+// Ask to join a named library. If the library has members, this files a
+// request that an existing member must approve (the joiner neither uploads
+// nor sees any books until then) and begins watching for the verdict. A
+// library with no members yet has nobody to ask, so the join completes
+// directly. Returns { pending, libName }.
+export async function requestJoin(opts) {
+  const { name, password, profileName } = opts;
+  const displayName = normalizeLibraryName(name);
+  if (!displayName) throw new Error("Enter a library name.");
+  if (!password) throw new Error("Enter a password.");
+
+  await ensureFirebase();
+  const libId = await deriveLibraryId(displayName, password);
+  const meta = await m.getDoc(bookDoc(libId, META_ID));
+  if (!meta.exists()) {
+    const err = new Error(
+      `No library called “${displayName}” with that password was found. ` +
+      "Check both for typos — or create it if this is a new library."
+    );
+    err.code = "not-found";
+    throw err;
+  }
+  const libName = meta.data().name ?? displayName;
+
+  const snap = await m.getDocs(m.collection(fsdb, "households", libId, "books"));
+  const hasMembers = snap.docs.some((d) => d.id.startsWith(MEMBER_PREFIX));
+  if (!hasMembers) {
+    await finalizeJoin(libId, libName, opts);
+    opts.onResolved?.(true, libName);
+    return { pending: false, libName };
+  }
+
+  await m.setDoc(bookDoc(libId, JOIN_PREFIX + deviceId()), {
+    _join: true,
+    deviceId: deviceId(),
+    name: (profileName ?? "").trim() || "Someone",
+    requestedAt: new Date().toISOString(),
+    status: "pending",
+  });
+  localStorage.setItem(PENDING_KEY, JSON.stringify({ libId, libName }));
+  watchPending(opts);
+  return { pending: true, libName };
+}
+
+async function finalizeJoin(libId, libName, opts) {
+  localStorage.setItem(HOUSEHOLD_KEY, libId);
+  localStorage.setItem(HOUSEHOLD_NAME_KEY, libName);
+  localStorage.removeItem(PENDING_KEY);
+  const localBooks =
+    typeof opts.localBooks === "function" ? opts.localBooks() : opts.localBooks ?? [];
+  await uploadBooks(libId, localBooks);
+  await start(opts.onRemote, opts.onError, {
+    localBooks,
+    onMembers: opts.onMembers,
+    profileName: opts.profileName,
+  });
+}
+
+// Watch our pending request until a member approves or denies it. Polling
+// (rather than a snapshot listener) keeps this trivially resumable across
+// app restarts; it only runs while a request is outstanding.
+export function watchPending(opts) {
+  const pending = pendingJoin();
+  if (!pending) return false;
+  stopWatchingPending();
+
+  const check = async () => {
+    try {
+      await ensureFirebase();
+      const reqRef = bookDoc(pending.libId, JOIN_PREFIX + deviceId());
+      const snap = await m.getDoc(reqRef);
+      const status = snap.exists() ? snap.data().status : "denied";
+      if (status === "pending") return;
+
+      stopWatchingPending();
+      await m.deleteDoc(reqRef).catch(() => {});
+      if (status === "approved") {
+        await finalizeJoin(pending.libId, pending.libName, opts);
+        opts.onResolved?.(true, pending.libName);
+      } else {
+        localStorage.removeItem(PENDING_KEY);
+        opts.onResolved?.(false, pending.libName);
+      }
+    } catch {
+      /* offline or transient — try again on the next tick */
+    }
+  };
+  check();
+  pendingTimer = setInterval(check, 3000);
+  return true;
+}
+
+function stopWatchingPending() {
+  if (pendingTimer) {
+    clearInterval(pendingTimer);
+    pendingTimer = null;
+  }
+}
+
+export async function cancelPending() {
+  const pending = pendingJoin();
+  stopWatchingPending();
+  localStorage.removeItem(PENDING_KEY);
+  if (pending && m) {
+    await m.deleteDoc(bookDoc(pending.libId, JOIN_PREFIX + deviceId())).catch(() => {});
+  }
+}
+
+// Called by an existing member from the join-requests list.
+export function approveJoin(devId) {
+  return m.setDoc(
+    bookDoc(currentHousehold(), JOIN_PREFIX + devId),
+    { status: "approved" },
+    { merge: true }
+  );
+}
+
+export function denyJoin(devId) {
+  return m.setDoc(
+    bookDoc(currentHousehold(), JOIN_PREFIX + devId),
+    { status: "denied" },
+    { merge: true }
+  );
 }
 
 export function stop() {
