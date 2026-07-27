@@ -1234,7 +1234,9 @@ $("#settings-btn").addEventListener("click", () => {
 function renderSettingsModal() {
   const el = $("#settings-content");
   const me = currentProfile();
-  const household = sync.isActive() ? sync.currentHousehold() : null;
+  const household = sync.isActive()
+    ? sync.currentLibraryName() ?? sync.currentHousehold()
+    : null;
   const skin = themes.currentSkin();
   const mode = themes.currentMode();
 
@@ -1386,47 +1388,122 @@ function renderSyncModal() {
     return;
   }
 
-  const code = sync.currentHousehold();
-  if (code && sync.isActive()) {
+  if (sync.currentHousehold() && sync.isActive()) {
+    renderSyncActive(el);
+  } else {
+    renderSyncJoin(el);
+  }
+}
+
+function renderSyncActive(el) {
+  const leaveBlock = `
+    ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
+    <div class="detail-actions">
+      <button id="leave-btn" class="danger-btn">Leave shared library</button>
+    </div>`;
+
+  if (sync.isNamed()) {
+    const name = sync.currentLibraryName() ?? "Shared library";
+    el.innerHTML = `
+      <p>✅ Sharing is <strong>on</strong>. This phone is connected to:</p>
+      <p class="household-code">📚 ${esc(name)}</p>
+      <p class="muted">Password protected. To let someone in, tell them the
+      library name and password — on their phone: <em>Settings → Shared
+      library → Join</em>. The password never leaves your devices, so there's
+      no way to recover it if forgotten; to change it, create a new library
+      (your books come along) and have everyone rejoin.</p>
+      ${leaveBlock}`;
+  } else {
+    // Legacy code-based household.
+    const code = sync.currentHousehold();
     el.innerHTML = `
       <p>✅ Sharing is <strong>on</strong>. This phone is part of household:</p>
-      <p class="household-code">${code}</p>
-      <p class="muted">Anyone who opens the app and joins with this code shares
-      the same library. Share it only with people you trust — it's the only key.</p>
-      ${syncError ? `<p class="sync-error">⚠️ ${syncError}</p>` : ""}
-      <div class="detail-actions">
-        <button id="copy-code-btn" class="secondary-btn">Copy code</button>
-        <button id="leave-btn" class="danger-btn">Leave shared library</button>
-      </div>`;
-    $("#copy-code-btn").addEventListener("click", () =>
-      navigator.clipboard?.writeText(code)
-    );
-    $("#leave-btn").addEventListener("click", () => {
-      if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
-        sync.leave();
-        syncError = null;
-        updateSyncIndicator();
-        renderSyncModal();
-      }
+      <p class="household-code">${esc(code)}</p>
+      <p class="muted">Anyone who joins with this code shares the library.</p>
+      <div class="settings-section">
+        <span class="filter-label">Upgrade to a named library</span>
+        <p class="muted" style="margin:0.4rem 0 0.5rem">Give the library a real
+        name and a password instead of a code. Your books come along; your
+        partner then joins with the new name + password.</p>
+        <form id="convert-form">
+          <div class="inline-form">
+            <input type="text" id="convert-name" placeholder="Library name (e.g. Lukey Library)"
+                   autocomplete="off" />
+          </div>
+          <div class="inline-form">
+            <input type="password" id="convert-password" placeholder="Password (6+ characters)"
+                   autocomplete="new-password" />
+            <button type="submit" class="primary-btn">Upgrade</button>
+          </div>
+        </form>
+      </div>
+      ${leaveBlock}`;
+
+    $("#convert-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await activateNamed($("#convert-name").value, $("#convert-password").value, true);
     });
-    return;
   }
 
+  $("#leave-btn").addEventListener("click", () => {
+    if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
+      sync.leave();
+      syncError = null;
+      updateSyncIndicator();
+      renderSyncModal();
+    }
+  });
+}
+
+function renderSyncJoin(el) {
   el.innerHTML = `
-    <p>Create a shared library and give the code to your partner, or enter a
-    code someone shared with you. Books already on this phone are merged in —
-    nothing is lost.</p>
-    ${syncError ? `<p class="sync-error">⚠️ ${syncError}</p>` : ""}
-    <div class="detail-actions">
-      <button id="create-household-btn" class="primary-btn">Create shared library</button>
-    </div>
-    <form id="join-form" class="inline-form" style="margin-top:0.8rem">
-      <input type="text" id="join-code-input" placeholder="Enter a household code"
+    <p>Name your library and protect it with a password. Whoever enters the
+    <strong>same name and password</strong> lands in the same library — create
+    it once, then your partner joins with the same details. Books already on
+    each phone are merged in, so nothing is lost.</p>
+    ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
+    <form id="library-form">
+      <div class="inline-form">
+        <input type="text" id="library-name" placeholder="Library name (e.g. Lukey Library)"
+               autocomplete="off" />
+      </div>
+      <div class="inline-form">
+        <input type="password" id="library-password" placeholder="Password (6+ characters)"
+               autocomplete="off" />
+      </div>
+      <div class="detail-actions" style="margin-top:0.35rem">
+        <button type="submit" class="primary-btn" data-intent="join">Join library</button>
+        <button type="submit" class="secondary-btn" style="margin-top:0"
+                data-intent="create">Create new library</button>
+      </div>
+    </form>
+    <p class="muted" style="font-size:0.78rem;margin-top:0.8rem">
+      The password is only ever used on your phones to locate the library — it's
+      never sent or stored online, so pick something you'll both remember.
+      <button type="button" id="legacy-toggle" class="link-btn">Have an old household code?</button>
+    </p>
+    <form id="legacy-form" class="inline-form hidden">
+      <input type="text" id="join-code-input" placeholder="Old household code"
              autocomplete="off" autocapitalize="none" />
-      <button type="submit" class="primary-btn">Join</button>
+      <button type="submit" class="primary-btn">Join by code</button>
     </form>`;
 
-  const activate = async (code) => {
+  let intent = "join";
+  el.querySelectorAll("[data-intent]").forEach((btn) =>
+    btn.addEventListener("click", () => (intent = btn.dataset.intent))
+  );
+  $("#library-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await activateNamed($("#library-name").value, $("#library-password").value, intent === "create");
+  });
+
+  $("#legacy-toggle").addEventListener("click", () =>
+    $("#legacy-form").classList.toggle("hidden")
+  );
+  $("#legacy-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = $("#join-code-input").value;
+    if (!code.trim()) return;
     syncError = null;
     try {
       await sync.join(code, db.getAllBooks(), onRemoteBooks, onSyncError);
@@ -1435,19 +1512,31 @@ function renderSyncModal() {
     }
     updateSyncIndicator();
     renderSyncModal();
-  };
-  $("#create-household-btn").addEventListener("click", () => activate(sync.generateCode()));
-  $("#join-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const code = $("#join-code-input").value;
-    if (code.trim()) activate(code);
   });
+}
+
+async function activateNamed(name, password, create) {
+  syncError = null;
+  try {
+    await sync.openNamed({
+      name,
+      password,
+      create,
+      localBooks: db.getAllBooks(),
+      onRemote: onRemoteBooks,
+      onError: onSyncError,
+    });
+  } catch (err) {
+    syncError = err.message;
+  }
+  updateSyncIndicator();
+  renderSyncModal();
 }
 
 async function initSync() {
   if (sync.isConfigured() && sync.currentHousehold()) {
     try {
-      await sync.start(onRemoteBooks, onSyncError);
+      await sync.start(onRemoteBooks, onSyncError, { localBooks: db.getAllBooks() });
     } catch (err) {
       syncError = err.message;
     }

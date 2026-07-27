@@ -55,9 +55,11 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Your data stays yours** — everything is stored in your browser's localStorage,
   with JSON export/import for backup or moving devices.
 - **Optional shared library** 👩‍❤️‍👨 — link two or more phones into one live
-  "household" collection (scan on one phone, it appears on the other; series
-  tracking counts everyone's books). Runs on Firebase's free tier with a
-  one-time setup — see [SETUP-SYNC.md](SETUP-SYNC.md).
+  collection with a **library name + password** (scan on one phone, it appears
+  on the other; series tracking counts everyone's books). The password never
+  leaves your devices — it's used on-phone to derive the library's storage
+  location (PBKDF2). Runs on Firebase's free tier with a one-time setup — see
+  [SETUP-SYNC.md](SETUP-SYNC.md).
 
 ## Running it
 

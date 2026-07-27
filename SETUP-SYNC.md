@@ -65,12 +65,20 @@ hiding these values.)
 
 After GitHub Pages redeploys (~1 minute):
 
-1. **Your phone:** open the app → **Shared library** (bottom-left) →
-   **Create shared library**. It shows a household code — copy it.
-2. **Partner's phone:** open the app → **Shared library** → enter the code →
-   **Join**.
+1. **Your phone:** open the app → **Settings → Shared library**. Enter a
+   library name (e.g. *Lukey Library*) and a password (6+ characters), then tap
+   **Create new library**.
+2. **Partner's phone:** same screen — enter the **same name and password** →
+   **Join library**.
 
 Done. Both phones now share one library: adds, shelf moves, and deletions sync
 in real time, existing books on each phone are merged in when joining, and the
 series checker counts books owned by either of you. Leaving the shared library
 (same screen) only disconnects that phone — it keeps a local copy.
+
+How the password works: the app scrambles name + password together on your
+phone (PBKDF2) to derive the library's storage location — the password is never
+sent or stored online. That also means it can't be recovered or changed in
+place: if it's forgotten, create a new library (books come along) and have
+everyone rejoin. Households created with the older random-code system keep
+working, and the app offers a one-tap upgrade to a named library.
