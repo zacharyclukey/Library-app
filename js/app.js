@@ -19,6 +19,32 @@ let currentShelf = "owned";
 let pendingBooks = []; // queue of looked-up books waiting for shelf choice
 const seriesCache = new Map(); // book.id -> { series, books } | null
 
+// ---------- profiles ----------
+// A profile is just a name. The Owned shelf is shared by the household;
+// To Read / Completed / Wishlist entries belong to whoever added them
+// (books with no profile are treated as shared and show up for everyone).
+
+const PROFILE_KEY = "shelfie.profile.v1";
+const PERSONAL_SHELVES = ["tbr", "completed", "wishlist"];
+let memberFilter = "me"; // "me" | "all" | a profile name
+let searchQuery = "";
+
+function currentProfile() {
+  return localStorage.getItem(PROFILE_KEY);
+}
+
+function allProfiles() {
+  const names = new Set(db.getAllBooks().map((b) => b.profile).filter(Boolean));
+  if (currentProfile()) names.add(currentProfile());
+  return [...names].sort();
+}
+
+// A book's rating by the current profile (falling back to the pre-profile
+// single rating for older records).
+function myRating(b) {
+  return b.ratings?.[currentProfile()] ?? b.rating ?? null;
+}
+
 const SHELF_LABEL = { owned: "Owned", tbr: "To Be Read", completed: "Completed", wishlist: "Wishlist" };
 const SHELVES = ["owned", "tbr", "completed", "wishlist"];
 
@@ -57,13 +83,29 @@ function esc(s) {
 }
 
 function renderShelf() {
-  const books = db.getBooksOnShelf(currentShelf);
+  let books = db.getBooksOnShelf(currentShelf);
   for (const shelf of SHELVES) {
     $(`#count-${shelf}`).textContent = db.getBooksOnShelf(shelf).length;
   }
+
+  const personal = PERSONAL_SHELVES.includes(currentShelf);
+  renderProfileFilter(personal);
+  if (personal && memberFilter !== "all") {
+    const target = memberFilter === "me" ? currentProfile() : memberFilter;
+    books = books.filter((b) => !b.profile || !target || b.profile === target);
+  }
+  const q = searchQuery.trim().toLowerCase();
+  if (q) {
+    books = books.filter((b) =>
+      (b.title + " " + (b.authors ?? []).join(" ")).toLowerCase().includes(q)
+    );
+  }
+
   emptyState.classList.toggle("hidden", books.length > 0);
+  const showNames = allProfiles().length > 1;
   bookList.innerHTML = books
     .map((b) => {
+      const rating = myRating(b);
       const cached = seriesCache.get(b.id);
       const missing = cached?.missingCount ?? 0;
       const seriesBadge = b.series?.name
@@ -85,8 +127,11 @@ function renderShelf() {
             ${esc([b.format, b.publisher, b.publishDate].filter(Boolean).join(" · "))}
           </p>
           <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
-          ${b.rating ? `<p class="card-rating" aria-label="Rated ${b.rating} of 5">${starString(b.rating)}</p>` : ""}
-          <div class="badges">${seriesBadge}${moreBadge}</div>
+          ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
+          <div class="badges">
+            ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
+            ${seriesBadge}${moreBadge}
+          </div>
         </div>
       </article>`;
     })
@@ -140,6 +185,99 @@ document.querySelectorAll(".tab").forEach((tab) => {
     renderShelf();
   });
 });
+
+// ---------- search & member filter ----------
+
+$("#list-search").addEventListener("input", (e) => {
+  searchQuery = e.target.value;
+  renderShelf();
+});
+
+function renderProfileFilter(show) {
+  const el = $("#profile-filter");
+  const profiles = allProfiles();
+  if (!show || profiles.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const me = currentProfile();
+  const chips = [];
+  if (me) chips.push(["me", `Mine (${me})`]);
+  profiles.filter((p) => p !== me).forEach((p) => chips.push([p, p]));
+  chips.push(["all", "Everyone"]);
+  el.innerHTML = chips
+    .map(
+      ([v, label]) =>
+        `<button class="filter-chip ${memberFilter === v ? "active" : ""}"
+                 data-filter="${esc(v)}">${esc(label)}</button>`
+    )
+    .join("");
+  el.querySelectorAll("[data-filter]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      memberFilter = btn.dataset.filter;
+      renderShelf();
+    })
+  );
+}
+
+// ---------- profile UI ----------
+
+const profileModal = $("#profile-modal");
+
+function updateProfileChip() {
+  $("#profile-chip").textContent = "👤 " + (currentProfile() ?? "Set profile");
+}
+
+$("#profile-chip").addEventListener("click", () => {
+  renderProfileModal();
+  profileModal.showModal();
+});
+
+function renderProfileModal() {
+  const el = $("#profile-content");
+  const me = currentProfile();
+  const profiles = allProfiles();
+  el.innerHTML = `
+    <p>Profiles keep each person's <strong>To Read, Completed and Wishlist</strong>
+    separate, while the <strong>Owned</strong> shelf stays shared. Pick who's using
+    this phone:</p>
+    <div class="profile-list">
+      ${profiles
+        .map(
+          (p) => `<button class="filter-chip big ${p === me ? "active" : ""}"
+                          data-pick-profile="${esc(p)}">👤 ${esc(p)}</button>`
+        )
+        .join("")}
+    </div>
+    <form id="new-profile-form" class="inline-form" style="margin-top:0.7rem">
+      <input type="text" id="new-profile-input" placeholder="Add a name (e.g. Zach)"
+             autocomplete="off" maxlength="30" />
+      <button type="submit" class="primary-btn">${profiles.length ? "Add" : "Create"}</button>
+    </form>
+    <p class="muted" style="font-size:0.78rem">Each phone remembers its own profile.
+    Books added before profiles existed are shared — open one and use
+    “Belongs to” to assign it.</p>`;
+
+  el.querySelectorAll("[data-pick-profile]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      localStorage.setItem(PROFILE_KEY, btn.dataset.pickProfile);
+      memberFilter = "me";
+      updateProfileChip();
+      profileModal.close();
+      renderShelf();
+    })
+  );
+  $("#new-profile-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#new-profile-input").value.trim();
+    if (!name) return;
+    localStorage.setItem(PROFILE_KEY, name);
+    memberFilter = "me";
+    updateProfileChip();
+    profileModal.close();
+    renderShelf();
+  });
+}
 
 // ---------- add flow ----------
 
@@ -311,7 +449,7 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     const shelf = btn.dataset.addShelf;
     const alsoOwn = $("#also-own-checkbox").checked;
     const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
-    db.addBook({ ...book, shelf, owned });
+    db.addBook({ ...book, shelf, owned, profile: currentProfile() ?? null });
     seriesCache.delete(book.id);
     renderShelf();
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
@@ -362,16 +500,29 @@ async function openDetail(id) {
         </table>
       </div>
     </div>
+    ${allProfiles().length ? `
+    <div class="assign-row">
+      <span class="rate-label">Belongs to:</span>
+      ${allProfiles()
+        .map((p) => `<button class="filter-chip ${b.profile === p ? "active" : ""}"
+                       data-assign="${esc(p)}">${esc(p)}</button>`)
+        .join("")}
+      <button class="filter-chip ${!b.profile ? "active" : ""}" data-assign="">Shared</button>
+    </div>` : ""}
     <div class="rate-row">
       <span class="rate-label">Your rating:</span>
       <span class="rate-stars">
         ${[1, 2, 3, 4, 5]
-          .map((n) => `<button class="star-btn ${b.rating >= n ? "filled" : ""}" data-rate="${n}"
-                        aria-label="Rate ${n} of 5">${b.rating >= n ? "★" : "☆"}</button>`)
+          .map((n) => `<button class="star-btn ${myRating(b) >= n ? "filled" : ""}" data-rate="${n}"
+                        aria-label="Rate ${n} of 5">${myRating(b) >= n ? "★" : "☆"}</button>`)
           .join("")}
       </span>
-      ${b.rating ? `<button class="link-btn" data-clear-rating>clear</button>` : ""}
+      ${myRating(b) ? `<button class="link-btn" data-clear-rating>clear</button>` : ""}
     </div>
+    ${Object.entries(b.ratings ?? {})
+      .filter(([name, r]) => name !== currentProfile() && r)
+      .map(([name, r]) => `<p class="other-rating">${esc(name)}: <span class="card-rating">${starString(r)}</span></p>`)
+      .join("")}
     <div class="find-section">
       <h3>Find this book</h3>
       <div class="store-links">
@@ -404,15 +555,29 @@ async function openDetail(id) {
       renderShelf();
     })
   );
+  $("#detail-content").querySelectorAll("[data-assign]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      db.updateBook(id, { profile: btn.dataset.assign || null });
+      renderShelf();
+      openDetail(id);
+    })
+  );
   $("#detail-content").querySelectorAll("[data-rate]").forEach((btn) =>
     btn.addEventListener("click", () => {
-      db.updateBook(id, { rating: Number(btn.dataset.rate) });
+      const me = currentProfile() ?? "Me";
+      db.updateBook(id, {
+        ratings: { ...(b.ratings ?? {}), [me]: Number(btn.dataset.rate) },
+        rating: null, // retire the pre-profile single rating
+      });
       renderShelf();
       openDetail(id); // re-render the modal with the new rating
     })
   );
   $("#detail-content").querySelector("[data-clear-rating]")?.addEventListener("click", () => {
-    db.updateBook(id, { rating: null });
+    const me = currentProfile() ?? "Me";
+    const ratings = { ...(b.ratings ?? {}) };
+    delete ratings[me];
+    db.updateBook(id, { ratings, rating: null });
     renderShelf();
     openDetail(id);
   });
@@ -502,6 +667,7 @@ async function renderSeriesSection(book) {
         series: { name: cached.series.name, position: null },
         shelf: "wishlist",
         owned: false,
+        profile: currentProfile() ?? null,
       });
       renderSeriesSection(book); // re-render to show the 🎁 flag
       renderShelf();
@@ -509,6 +675,136 @@ async function renderSeriesSection(book) {
   );
 
   renderShelf(); // refresh badges with the new missing count
+}
+
+// ---------- discover (recommendations) ----------
+
+const discoverModal = $("#discover-modal");
+let recsCache = null; // invalidated when the library changes size
+
+$("#discover-btn").addEventListener("click", async () => {
+  const el = $("#discover-content");
+  discoverModal.showModal();
+
+  const books = db.getAllBooks();
+  if (books.length < 2) {
+    el.innerHTML = `<p class="muted">Add a few books first — recommendations are
+      based on the authors and genres on your shelves.</p>`;
+    return;
+  }
+  if (recsCache?.count === books.length) {
+    renderRecs(recsCache.recs);
+    return;
+  }
+
+  el.innerHTML = `<p class="series-loading">Reading your shelves and finding
+    well-rated books you don't have yet…</p>`;
+  try {
+    const recs = await buildRecommendations(books);
+    recsCache = { count: books.length, recs };
+    renderRecs(recs);
+  } catch (err) {
+    el.innerHTML = `<p class="sync-error">Couldn't fetch recommendations (${esc(err.message)}). Try again in a bit.</p>`;
+  }
+});
+
+// Taste signals: authors weighted by how much you engaged (high personal
+// rating > wishlisted > merely owned), plus common subjects across your
+// works. Candidates come from Open Library ranked by community rating.
+async function buildRecommendations(books) {
+  const authorScore = {};
+  for (const b of books) {
+    const w = (myRating(b) ?? 0) >= 4 ? 3 : b.shelf === "wishlist" ? 2 : 1;
+    (b.authors ?? []).forEach((a) => (authorScore[a] = (authorScore[a] ?? 0) + w));
+  }
+  const topAuthors = Object.entries(authorScore)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([a]) => a);
+
+  const subjectScore = {};
+  const withWorks = books.filter((b) => b.workKey).slice(0, 8);
+  await Promise.allSettled(
+    withWorks.map(async (b) => {
+      (await api.fetchWorkSubjects(b.workKey)).forEach(
+        (s) => (subjectScore[s] = (subjectScore[s] ?? 0) + 1)
+      );
+    })
+  );
+  const topSubjects = Object.entries(subjectScore)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([s]) => s);
+
+  const queries = [
+    ...topAuthors.map((a) => ({ q: `author:"${a}"`, reason: `More by ${a}` })),
+    ...topSubjects.map((s) => ({ q: `subject:"${s}"`, reason: s })),
+  ];
+  const have = new Set(books.map((b) => normTitle(b.title)));
+  const found = new Map();
+  await Promise.allSettled(
+    queries.map(async ({ q, reason }) => {
+      for (const r of await api.searchRanked(q, 10)) {
+        const t = normTitle(r.title);
+        if (!have.has(t) && !found.has(t)) found.set(t, { ...r, reason });
+      }
+    })
+  );
+  return [...found.values()]
+    .sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0))
+    .slice(0, 15);
+}
+
+function renderRecs(recs) {
+  const el = $("#discover-content");
+  if (!recs.length) {
+    el.innerHTML = `<p class="muted">Nothing new found right now — try again after
+      adding or rating a few more books.</p>`;
+    return;
+  }
+  const wishTitles = new Set(db.getBooksOnShelf("wishlist").map((b) => normTitle(b.title)));
+  el.innerHTML = `
+    <p class="muted" style="font-size:0.8rem">Based on the authors and genres on
+    your shelves, ranked by Open Library reader ratings.</p>
+    <ul class="series-list">
+      ${recs
+        .map((r, i) => {
+          const wished = wishTitles.has(normTitle(r.title));
+          return `
+          <li>
+            ${r.coverUrl ? `<img src="${esc(r.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
+            <span class="series-title">
+              <strong>${esc(r.title)}</strong>${r.year ? ` <small>(${r.year})</small>` : ""}<br />
+              <small>${esc(r.authors.join(", "))}</small><br />
+              <small class="card-rating">${r.avgRating ? starString(Math.round(r.avgRating)) : ""}</small>
+              <small class="muted">${esc(r.reason)}</small>
+            </span>
+            ${wished
+              ? `<span class="own-flag wished">🎁</span>`
+              : `<button class="wish-btn" data-rec-idx="${i}">＋ Wishlist</button>`}
+          </li>`;
+        })
+        .join("")}
+    </ul>`;
+  el.querySelectorAll("[data-rec-idx]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const r = recsCache.recs[Number(btn.dataset.recIdx)];
+      db.addBook({
+        id: "ol:" + r.workKey.replace("/works/", ""),
+        title: r.title,
+        authors: r.authors,
+        workKey: r.workKey,
+        coverUrl: r.coverUrl,
+        isbn13: null, isbn10: null, publisher: null, publishDate: null,
+        pageCount: null, format: null, editionKey: null, series: null,
+        shelf: "wishlist",
+        owned: false,
+        profile: currentProfile() ?? null,
+      });
+      renderShelf();
+      renderRecs(recsCache.recs); // re-render to show the 🎁 flag
+    })
+  );
 }
 
 // ---------- export / import ----------
@@ -650,5 +946,10 @@ async function initSync() {
 }
 
 // ---------- init ----------
+updateProfileChip();
 renderShelf();
 initSync();
+if (!currentProfile()) {
+  renderProfileModal();
+  profileModal.showModal();
+}

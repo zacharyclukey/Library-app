@@ -181,6 +181,47 @@ export async function searchByTitle(query) {
   }));
 }
 
+// ---------- Recommendations ----------
+
+const GENERIC_SUBJECTS =
+  /^fiction$|^literature$|accessible|protected daisy|in library|overdrive|large type|reading level|bestseller|translations|collections|open library|staff picks|^nyt:|^award:|textbooks/i;
+
+// Subjects tagged on a work, filtered down to ones that say something
+// about taste (drops catalog noise like "Accessible book").
+export async function fetchWorkSubjects(workKey) {
+  try {
+    const res = await fetch(`${OL}${workKey}.json`);
+    if (!res.ok) return [];
+    const work = await res.json();
+    return (work.subjects ?? [])
+      .filter((s) => typeof s === "string" && s.length < 40 && !GENERIC_SUBJECTS.test(s))
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+// Well-rated books matching an Open Library query (author:"..." or
+// subject:"..."), for building recommendations.
+export async function searchRanked(query, limit = 10) {
+  const res = await fetch(
+    `${OL}/search.json?q=${encodeURIComponent(query)}&sort=rating` +
+      `&fields=key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count&limit=${limit}`
+  );
+  if (!res.ok) return [];
+  return ((await res.json()).docs ?? [])
+    .filter((d) => (d.ratings_count ?? 0) >= 20)
+    .map((d) => ({
+      workKey: d.key,
+      title: d.title,
+      authors: d.author_name ?? [],
+      year: d.first_publish_year ?? null,
+      coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
+      avgRating: d.ratings_average ?? null,
+      ratingsCount: d.ratings_count ?? 0,
+    }));
+}
+
 // ---------- Series detection & listing ----------
 
 // Figure out what series (if any) a book belongs to. Tries, in order:

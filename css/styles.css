@@ -35,6 +35,19 @@ body {
 .app-header h1 { margin: 0; font-size: 1.4rem; }
 .tagline { margin: 0.2rem 0 0; font-size: 0.85rem; opacity: 0.8; }
 
+.header-row { display: flex; align-items: center; justify-content: space-between; }
+.profile-chip {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.profile-chip:hover { background: rgba(255, 255, 255, 0.22); }
+
 .shelf-tabs {
   display: flex;
   background: var(--accent);
@@ -67,6 +80,41 @@ body {
   font-size: 0.8em;
   margin-left: 0.25em;
 }
+
+/* ---------- toolbar (search + member filter) ---------- */
+
+.toolbar {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0.8rem 1rem 0;
+}
+#list-search {
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  background: var(--card);
+}
+.profile-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
+.filter-chip {
+  background: var(--card);
+  border: 1px solid #d0d7de;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.filter-chip.big { font-size: 0.9rem; padding: 0.45rem 1rem; }
+.profile-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
 /* ---------- book list ---------- */
 
@@ -114,6 +162,7 @@ body {
 }
 .series-badge { background: var(--accent-soft); color: var(--accent); }
 .more-badge { background: #fff3d1; color: var(--amber); font-weight: 600; }
+.profile-badge { background: #e6f4ea; color: var(--green); }
 
 .empty-state {
   text-align: center;
@@ -146,6 +195,13 @@ body {
   cursor: pointer;
 }
 .fab:active { transform: scale(0.97); }
+.fab-row { gap: 0.6rem; }
+.fab-secondary {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.95rem;
+  padding: 0.85rem 1.2rem;
+}
 
 /* ---------- modals ---------- */
 
@@ -349,6 +405,14 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
   gap: 0.4rem;
   margin-bottom: 0.8rem;
 }
+.assign-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+.other-rating { margin: -0.4rem 0 0.7rem; font-size: 0.82rem; color: var(--muted); }
 .rate-label { font-size: 0.85rem; color: var(--muted); }
 .star-btn {
   background: none;

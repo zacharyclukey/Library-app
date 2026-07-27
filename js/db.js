@@ -11,7 +11,9 @@
 //   coverUrl,
 //   shelf: "owned" | "tbr" | "completed" | "wishlist",
 //   owned: true|false,        // tbr/completed books can also be owned copies
-//   rating: 1-5 | null,
+//   profile: name | null,     // whose list entry this is (null = shared)
+//   ratings: { profileName: 1-5 },
+//   rating: 1-5 | null,       // legacy pre-profile rating
 //   series: { name, position } | null,
 //   addedAt: ISO string
 // }

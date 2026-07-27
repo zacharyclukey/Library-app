@@ -14,7 +14,10 @@
 </head>
 <body>
   <header class="app-header">
-    <h1>📚 Shelfie</h1>
+    <div class="header-row">
+      <h1>📚 Shelfie</h1>
+      <button id="profile-chip" class="profile-chip">👤</button>
+    </div>
     <p class="tagline">Snap a photo of a book to add it to your library</p>
   </header>
 
@@ -34,6 +37,10 @@
   </nav>
 
   <main>
+    <div class="toolbar">
+      <input type="search" id="list-search" placeholder="Search this shelf…" autocomplete="off" />
+      <div id="profile-filter" class="profile-filter"></div>
+    </div>
     <section id="book-list" class="book-list" aria-live="polite"></section>
     <p id="empty-state" class="empty-state hidden">
       No books on this shelf yet.<br />Tap <strong>＋ Add Book</strong> to scan one in.
@@ -41,6 +48,7 @@
   </main>
 
   <div class="fab-row">
+    <button id="discover-btn" class="fab fab-secondary" title="Recommendations">✨ Discover</button>
     <button id="add-book-btn" class="fab" title="Add a book">＋ Add Book</button>
   </div>
 
@@ -114,6 +122,24 @@
       <button class="close-btn" data-close="detail-modal" aria-label="Close">✕</button>
     </div>
     <div id="detail-content"></div>
+  </dialog>
+
+  <!-- ============ Profile modal ============ -->
+  <dialog id="profile-modal" class="modal">
+    <div class="modal-header">
+      <h2>👤 Profiles</h2>
+      <button class="close-btn" data-close="profile-modal" aria-label="Close">✕</button>
+    </div>
+    <div id="profile-content"></div>
+  </dialog>
+
+  <!-- ============ Discover modal ============ -->
+  <dialog id="discover-modal" class="modal">
+    <div class="modal-header">
+      <h2>✨ Recommended for you</h2>
+      <button class="close-btn" data-close="discover-modal" aria-label="Close">✕</button>
+    </div>
+    <div id="discover-content"></div>
   </dialog>
 
   <!-- ============ Shared library (sync) modal ============ -->

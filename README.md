@@ -22,6 +22,14 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   and Goodreads (reviews).
 - **Star ratings** ⭐ — rate any book 1–5 from its detail view; ratings show on
   cards and sync to the household.
+- **Profiles** 👤 — each phone picks a profile; To Read, Completed, and Wishlist
+  are kept per person (with Mine / partner / Everyone filters) while the Owned
+  shelf stays shared. Books can be reassigned from their detail view, and each
+  person's star ratings are tracked separately.
+- **Shelf search** 🔎 — filter the current shelf by title or author as you type.
+- **Discover** ✨ — free recommendations built from your shelves: favorite
+  authors and recurring genres are mined from your library, then matched against
+  well-rated Open Library books you don't own, with one-tap wishlisting.
 - **Series awareness** — each owned book is checked against Open Library and Google
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked
