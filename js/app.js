@@ -1,6 +1,7 @@
 import * as db from "./db.js";
 import * as api from "./api.js";
 import * as sync from "./sync.js";
+import * as flt from "./filters.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 
 // ---------- element handles ----------
@@ -28,6 +29,11 @@ const PROFILE_KEY = "shelfie.profile.v1";
 const PERSONAL_SHELVES = ["tbr", "completed", "wishlist"];
 let memberFilter = "me"; // "me" | "all" | a profile name
 let searchQuery = "";
+
+const emptyFilter = () =>
+  ({ genre: null, length: null, series: null, age: null, format: null, rated: null });
+let shelfFilter = emptyFilter();
+let shelfSort = "added";
 
 function currentProfile() {
   return localStorage.getItem(PROFILE_KEY);
@@ -101,6 +107,15 @@ function renderShelf() {
     );
   }
 
+  const hadBeforeFilter = books.length;
+  books = books.filter((b) => flt.matchesFilter(b, shelfFilter, { myRating: myRating(b) }));
+  books = flt.sortBooks(books, shelfSort, { ratingOf: myRating });
+  updateFilterBadge();
+
+  emptyState.innerHTML =
+    hadBeforeFilter > 0 || q
+      ? "No books match your search or filters.<br />Tap <strong>⚙ Filters</strong> to adjust them."
+      : "No books on this shelf yet.<br />Tap <strong>＋ Add Book</strong> to scan one in.";
   emptyState.classList.toggle("hidden", books.length > 0);
   const showNames = allProfiles().length > 1;
   bookList.innerHTML = books
@@ -192,6 +207,100 @@ $("#list-search").addEventListener("input", (e) => {
   searchQuery = e.target.value;
   renderShelf();
 });
+
+// ---------- filter & sort panel ----------
+
+$("#filter-toggle").addEventListener("click", () => {
+  const panel = $("#filter-panel");
+  const opening = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !opening);
+  $("#filter-toggle").setAttribute("aria-expanded", opening);
+  if (opening) renderFilterPanel();
+});
+
+function updateFilterBadge() {
+  const n = flt.activeFilterCount(shelfFilter) + (shelfSort !== "added" ? 1 : 0);
+  const badge = $("#filter-count");
+  badge.textContent = n;
+  badge.classList.toggle("hidden", n === 0);
+}
+
+// Genres that actually occur in the library, so the panel has no dead chips.
+function libraryGenres() {
+  const present = new Set();
+  db.getAllBooks().forEach((b) => flt.genresOf(b).forEach((g) => present.add(g)));
+  return flt.GENRES.map(([name]) => name).filter((g) => present.has(g));
+}
+
+function chipGroup(label, options, current, onPick) {
+  const wrap = document.createElement("div");
+  wrap.className = "filter-group";
+  wrap.innerHTML = `<span class="filter-label">${esc(label)}</span>`;
+  const row = document.createElement("div");
+  row.className = "profile-filter";
+  options.forEach(([value, text]) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-chip" + (current === value ? " active" : "");
+    btn.textContent = text;
+    btn.addEventListener("click", () => onPick(current === value ? null : value));
+    row.appendChild(btn);
+  });
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function renderFilterPanel() {
+  const panel = $("#filter-panel");
+  panel.innerHTML = "";
+
+  const set = (key) => (value) => {
+    shelfFilter[key] = value;
+    renderFilterPanel();
+    renderShelf();
+  };
+
+  const genres = libraryGenres();
+  if (genres.length) {
+    panel.appendChild(
+      chipGroup("Genre", genres.map((g) => [g, g]), shelfFilter.genre, set("genre"))
+    );
+  }
+  panel.appendChild(chipGroup("Length", flt.LENGTH_OPTIONS, shelfFilter.length, set("length")));
+  panel.appendChild(chipGroup("Series", flt.SERIES_OPTIONS, shelfFilter.series, set("series")));
+  panel.appendChild(chipGroup("Published", flt.AGE_OPTIONS, shelfFilter.age, set("age")));
+  panel.appendChild(chipGroup("Format", flt.FORMAT_OPTIONS, shelfFilter.format, set("format")));
+  panel.appendChild(chipGroup("Rating", flt.RATED_OPTIONS, shelfFilter.rated, set("rated")));
+
+  const sortWrap = document.createElement("div");
+  sortWrap.className = "filter-group";
+  sortWrap.innerHTML = `<span class="filter-label">Sort by</span>`;
+  const select = document.createElement("select");
+  select.className = "sort-select";
+  flt.SORT_OPTIONS.forEach(([value, text]) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = text;
+    opt.selected = shelfSort === value;
+    select.appendChild(opt);
+  });
+  select.addEventListener("change", () => {
+    shelfSort = select.value;
+    renderShelf();
+  });
+  sortWrap.appendChild(select);
+  panel.appendChild(sortWrap);
+
+  const clear = document.createElement("button");
+  clear.className = "link-btn";
+  clear.textContent = "Clear all filters";
+  clear.addEventListener("click", () => {
+    shelfFilter = emptyFilter();
+    shelfSort = "added";
+    renderFilterPanel();
+    renderShelf();
+  });
+  panel.appendChild(clear);
+}
 
 function renderProfileFilter(show) {
   const el = $("#profile-filter");
@@ -450,6 +559,12 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     const alsoOwn = $("#also-own-checkbox").checked;
     const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
     db.addBook({ ...book, shelf, owned, profile: currentProfile() ?? null });
+    // Fetch genre subjects in the background so filters know this book.
+    if (book.workKey && !book.subjects?.length) {
+      api.fetchWorkSubjects(book.workKey).then((subjects) => {
+        if (subjects.length) db.updateBook(book.id, { subjects });
+      });
+    }
     seriesCache.delete(book.id);
     renderShelf();
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
@@ -680,41 +795,75 @@ async function renderSeriesSection(book) {
 // ---------- discover (recommendations) ----------
 
 const discoverModal = $("#discover-modal");
-let recsCache = null; // invalidated when the library changes size
+let recFilter = { genre: null, length: null, age: null };
+let recsCache = null; // { key, recs } — keyed on filters + library size
 
-$("#discover-btn").addEventListener("click", async () => {
-  const el = $("#discover-content");
+$("#discover-btn").addEventListener("click", () => {
   discoverModal.showModal();
+  renderDiscover();
+});
 
+function renderDiscover() {
+  const el = $("#discover-content");
+  el.innerHTML = "";
+
+  const set = (key) => (value) => {
+    recFilter[key] = value;
+    renderDiscover();
+  };
+  const filterBox = document.createElement("div");
+  filterBox.className = "rec-filters";
+  filterBox.appendChild(
+    chipGroup("Genre", flt.GENRES.map(([g]) => [g, g]), recFilter.genre, set("genre"))
+  );
+  filterBox.appendChild(chipGroup("Length", flt.LENGTH_OPTIONS, recFilter.length, set("length")));
+  filterBox.appendChild(chipGroup("Published", flt.AGE_OPTIONS, recFilter.age, set("age")));
+  el.appendChild(filterBox);
+
+  const results = document.createElement("div");
+  el.appendChild(results);
+  loadRecs(results);
+}
+
+async function loadRecs(container) {
   const books = db.getAllBooks();
   if (books.length < 2) {
-    el.innerHTML = `<p class="muted">Add a few books first — recommendations are
+    container.innerHTML = `<p class="muted">Add a few books first — recommendations are
       based on the authors and genres on your shelves.</p>`;
     return;
   }
-  if (recsCache?.count === books.length) {
-    renderRecs(recsCache.recs);
+  const key = JSON.stringify(recFilter) + ":" + books.length;
+  if (recsCache?.key === key) {
+    renderRecs(container, recsCache.recs);
     return;
   }
-
-  el.innerHTML = `<p class="series-loading">Reading your shelves and finding
+  container.innerHTML = `<p class="series-loading">Reading your shelves and finding
     well-rated books you don't have yet…</p>`;
   try {
-    const recs = await buildRecommendations(books);
-    recsCache = { count: books.length, recs };
-    renderRecs(recs);
+    const recs = await buildRecommendations(books, recFilter);
+    recsCache = { key, recs };
+    renderRecs(container, recs);
   } catch (err) {
-    el.innerHTML = `<p class="sync-error">Couldn't fetch recommendations (${esc(err.message)}). Try again in a bit.</p>`;
+    container.innerHTML = `<p class="sync-error">Couldn't fetch recommendations (${esc(err.message)}). Try again in a bit.</p>`;
   }
-});
+}
 
 // Taste signals: authors weighted by how much you engaged (high personal
 // rating > wishlisted > merely owned), plus common subjects across your
-// works. Candidates come from Open Library ranked by community rating.
-async function buildRecommendations(books) {
+// works. When Discover filters are active, shelf books matching the filter
+// drive the profile (3x weight) and the rest of the library is context;
+// candidates are then constrained to the filter too. Results come from
+// Open Library ranked by community rating.
+async function buildRecommendations(books, f) {
+  const focusFilter = { ...emptyFilter(), genre: f.genre, length: f.length, age: f.age };
+  const anyFilter = !!(f.genre || f.length || f.age);
+  const inFocus = (b) => flt.matchesFilter(b, focusFilter, { myRating: myRating(b) });
+  const focusBoost = (b) => (anyFilter && inFocus(b) ? 3 : 1);
+
   const authorScore = {};
   for (const b of books) {
-    const w = (myRating(b) ?? 0) >= 4 ? 3 : b.shelf === "wishlist" ? 2 : 1;
+    const engagement = (myRating(b) ?? 0) >= 4 ? 3 : b.shelf === "wishlist" ? 2 : 1;
+    const w = engagement * focusBoost(b);
     (b.authors ?? []).forEach((a) => (authorScore[a] = (authorScore[a] ?? 0) + w));
   }
   const topAuthors = Object.entries(authorScore)
@@ -722,12 +871,17 @@ async function buildRecommendations(books) {
     .slice(0, 3)
     .map(([a]) => a);
 
+  // Mine subjects from filter-matching works first so a Fantasy filter
+  // reads your fantasy shelf, not your whole library.
   const subjectScore = {};
-  const withWorks = books.filter((b) => b.workKey).slice(0, 8);
+  const pool = anyFilter
+    ? [...books.filter(inFocus), ...books.filter((b) => !inFocus(b))]
+    : books;
+  const withWorks = pool.filter((b) => b.workKey).slice(0, 8);
   await Promise.allSettled(
     withWorks.map(async (b) => {
       (await api.fetchWorkSubjects(b.workKey)).forEach(
-        (s) => (subjectScore[s] = (subjectScore[s] ?? 0) + 1)
+        (s) => (subjectScore[s] = (subjectScore[s] ?? 0) + focusBoost(b))
       );
     })
   );
@@ -736,15 +890,23 @@ async function buildRecommendations(books) {
     .slice(0, 3)
     .map(([s]) => s);
 
+  const genreTerm = f.genre ? flt.genreQueryTerm(f.genre) : null;
+  const withGenre = (q) => (genreTerm ? `${q} subject:"${genreTerm}"` : q);
   const queries = [
-    ...topAuthors.map((a) => ({ q: `author:"${a}"`, reason: `More by ${a}` })),
-    ...topSubjects.map((s) => ({ q: `subject:"${s}"`, reason: s })),
+    ...topAuthors.map((a) => ({ q: withGenre(`author:"${a}"`), reason: `More by ${a}` })),
+    ...topSubjects
+      .filter((s) => s.toLowerCase() !== genreTerm)
+      .map((s) => ({ q: withGenre(`subject:"${s}"`), reason: s })),
   ];
+  if (genreTerm) queries.push({ q: `subject:"${genreTerm}"`, reason: `Top-rated ${f.genre}` });
+
   const have = new Set(books.map((b) => normTitle(b.title)));
   const found = new Map();
   await Promise.allSettled(
     queries.map(async ({ q, reason }) => {
-      for (const r of await api.searchRanked(q, 10)) {
+      for (const r of await api.searchRanked(q, 12)) {
+        if (f.length && !flt.lengthMatches(r.pages, f.length)) continue;
+        if (f.age && !flt.ageMatches(r.year, f.age)) continue;
         const t = normTitle(r.title);
         if (!have.has(t) && !found.has(t)) found.set(t, { ...r, reason });
       }
@@ -755,17 +917,17 @@ async function buildRecommendations(books) {
     .slice(0, 15);
 }
 
-function renderRecs(recs) {
-  const el = $("#discover-content");
+function renderRecs(el, recs) {
   if (!recs.length) {
-    el.innerHTML = `<p class="muted">Nothing new found right now — try again after
-      adding or rating a few more books.</p>`;
+    el.innerHTML = `<p class="muted">Nothing found for these filters — try loosening
+      them, or add and rate a few more books.</p>`;
     return;
   }
   const wishTitles = new Set(db.getBooksOnShelf("wishlist").map((b) => normTitle(b.title)));
   el.innerHTML = `
     <p class="muted" style="font-size:0.8rem">Based on the authors and genres on
-    your shelves, ranked by Open Library reader ratings.</p>
+    your shelves${flt.activeFilterCount(recFilter) ? " (weighted toward your filtered books)" : ""},
+    ranked by Open Library reader ratings.</p>
     <ul class="series-list">
       ${recs
         .map((r, i) => {
@@ -775,7 +937,7 @@ function renderRecs(recs) {
             ${r.coverUrl ? `<img src="${esc(r.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
             <span class="series-title">
               <strong>${esc(r.title)}</strong>${r.year ? ` <small>(${r.year})</small>` : ""}<br />
-              <small>${esc(r.authors.join(", "))}</small><br />
+              <small>${esc(r.authors.join(", "))}${r.pages ? ` · ${r.pages} pp` : ""}</small><br />
               <small class="card-rating">${r.avgRating ? starString(Math.round(r.avgRating)) : ""}</small>
               <small class="muted">${esc(r.reason)}</small>
             </span>
@@ -795,14 +957,16 @@ function renderRecs(recs) {
         authors: r.authors,
         workKey: r.workKey,
         coverUrl: r.coverUrl,
-        isbn13: null, isbn10: null, publisher: null, publishDate: null,
-        pageCount: null, format: null, editionKey: null, series: null,
+        isbn13: null, isbn10: null, publisher: null,
+        publishDate: r.year ? String(r.year) : null,
+        pageCount: r.pages ?? null,
+        format: null, editionKey: null, series: null,
         shelf: "wishlist",
         owned: false,
         profile: currentProfile() ?? null,
       });
       renderShelf();
-      renderRecs(recsCache.recs); // re-render to show the 🎁 flag
+      renderRecs(el, recsCache.recs); // re-render to show the 🎁 flag
     })
   );
 }
@@ -945,10 +1109,30 @@ async function initSync() {
   }
 }
 
+// Books scanned before genre support have no subject tags; fetch them
+// gently in the background so genre filters cover the whole library.
+async function backfillSubjects() {
+  const missing = db
+    .getAllBooks()
+    .filter((b) => b.workKey && !b.subjects?.length)
+    .slice(0, 20);
+  let updated = false;
+  for (const b of missing) {
+    const subjects = await api.fetchWorkSubjects(b.workKey);
+    if (subjects.length) {
+      db.updateBook(b.id, { subjects });
+      updated = true;
+    }
+    await new Promise((r) => setTimeout(r, 400)); // be polite to the API
+  }
+  if (updated) renderShelf();
+}
+
 // ---------- init ----------
 updateProfileChip();
 renderShelf();
 initSync();
+backfillSubjects();
 if (!currentProfile()) {
   renderProfileModal();
   profileModal.showModal();

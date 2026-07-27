@@ -45,6 +45,7 @@ export async function lookupByIsbn(isbn) {
     merged.authors = gbBook.authors;
   }
   if (!merged.series && gbBook?.series) merged.series = gbBook.series;
+  if (!merged.subjects?.length && gbBook?.subjects?.length) merged.subjects = gbBook.subjects;
 
   merged.id = "isbn:" + (merged.isbn13 || merged.isbn10 || isbn);
   return merged;
@@ -160,6 +161,7 @@ function googleVolumeToBook(item, fallbackIsbn) {
     workKey: null,
     coverUrl: v.imageLinks?.thumbnail?.replace("http://", "https://") ?? null,
     series,
+    subjects: v.categories ?? [],
   };
 }
 
@@ -206,7 +208,7 @@ export async function fetchWorkSubjects(workKey) {
 export async function searchRanked(query, limit = 10) {
   const res = await fetch(
     `${OL}/search.json?q=${encodeURIComponent(query)}&sort=rating` +
-      `&fields=key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count&limit=${limit}`
+      `&fields=key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count,number_of_pages_median&limit=${limit}`
   );
   if (!res.ok) return [];
   return ((await res.json()).docs ?? [])
@@ -219,6 +221,7 @@ export async function searchRanked(query, limit = 10) {
       coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
       avgRating: d.ratings_average ?? null,
       ratingsCount: d.ratings_count ?? 0,
+      pages: d.number_of_pages_median ?? null,
     }));
 }
 

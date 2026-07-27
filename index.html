@@ -38,7 +38,13 @@
 
   <main>
     <div class="toolbar">
-      <input type="search" id="list-search" placeholder="Search this shelf…" autocomplete="off" />
+      <div class="search-row">
+        <input type="search" id="list-search" placeholder="Search this shelf…" autocomplete="off" />
+        <button id="filter-toggle" class="filter-toggle" aria-expanded="false">
+          ⚙ Filters <span id="filter-count" class="count hidden"></span>
+        </button>
+      </div>
+      <div id="filter-panel" class="filter-panel hidden"></div>
       <div id="profile-filter" class="profile-filter"></div>
     </div>
     <section id="book-list" class="book-list" aria-live="polite"></section>

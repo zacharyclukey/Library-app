@@ -27,9 +27,16 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   shelf stays shared. Books can be reassigned from their detail view, and each
   person's star ratings are tracked separately.
 - **Shelf search** 🔎 — filter the current shelf by title or author as you type.
+- **Filters & sorting** ⚙️ — filter any shelf by genre (derived from Open Library
+  subject tags), length, series vs standalone, publication age, format, and
+  rating status; sort by date added, title, author, publish year, length, or
+  your rating.
 - **Discover** ✨ — free recommendations built from your shelves: favorite
   authors and recurring genres are mined from your library, then matched against
   well-rated Open Library books you don't own, with one-tap wishlisting.
+  Discover takes genre/length/age filters too — when set, your shelf books
+  matching the filter drive the taste profile (with the rest of the library as
+  context) and results are constrained to match.
 - **Series awareness** — each owned book is checked against Open Library and Google
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked
