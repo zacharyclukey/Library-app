@@ -59,9 +59,16 @@ const SHELF_ICON = { owned: "📗", tbr: "🔖", completed: "✅", wishlist: "�
 const SHELVES = ["owned", "tbr", "completed", "wishlist"];
 
 // How the copy exists: physical, Kindle/e-book, or Audible/audiobook.
-// Older records have no medium; they're treated as print.
+// Older records have no medium; they're treated as print. The whole feature
+// is opt-in (Settings → Track copy types) and invisible until enabled —
+// ownership alone is already covered by the "I own this copy" checkbox.
 const MEDIA = { print: "📕 Print", ebook: "📱 E-book", audio: "🎧 Audiobook" };
 const MEDIUM_ICON = { ebook: "📱", audio: "🎧" };
+const MEDIUM_KEY = "shelfie.trackMedium.v1";
+
+function trackMedium() {
+  return localStorage.getItem(MEDIUM_KEY) === "1";
+}
 
 const VIEW_KEY = "shelfie.view.v1";
 let viewMode = localStorage.getItem(VIEW_KEY) ?? "grid";
@@ -179,7 +186,7 @@ function gridCard(b, showNames) {
       </div>
       <div class="grid-meta">
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
-        ${MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${MEDIUM_ICON[b.medium]}</span>` : ""}
+        ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${MEDIUM_ICON[b.medium]}</span>` : ""}
         ${missing ? `<span class="mini-badge" title="${missing} more in this series">+${missing}</span>` : ""}
         ${showNames && b.profile ? `<span class="mini-badge who">${esc(b.profile[0])}</span>` : ""}
       </div>
@@ -209,7 +216,7 @@ function listCard(b, showNames) {
         <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
         ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
         <div class="badges">
-          ${MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
+          ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
           ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
           ${seriesBadge}${moreBadge}
         </div>
@@ -356,7 +363,10 @@ function renderFilterPanel() {
   panel.appendChild(chipGroup("Length", flt.LENGTH_OPTIONS, shelfFilter.length, set("length")));
   panel.appendChild(chipGroup("Series", flt.SERIES_OPTIONS, shelfFilter.series, set("series")));
   panel.appendChild(chipGroup("Published", flt.AGE_OPTIONS, shelfFilter.age, set("age")));
-  panel.appendChild(chipGroup("Format", flt.FORMAT_OPTIONS, shelfFilter.format, set("format")));
+  const formatOptions = flt.FORMAT_OPTIONS.filter(
+    ([v]) => trackMedium() || (v !== "ebook" && v !== "audio")
+  );
+  panel.appendChild(chipGroup("Format", formatOptions, shelfFilter.format, set("format")));
   panel.appendChild(chipGroup("Rating", flt.RATED_OPTIONS, shelfFilter.rated, set("rated")));
 
   const sortWrap = document.createElement("div");
@@ -672,8 +682,10 @@ function showNextPendingBook() {
       <p class="isbn">${book.isbn13 ? "ISBN-13 " + esc(book.isbn13) : ""}
         ${book.isbn10 ? " · ISBN-10 " + esc(book.isbn10) : ""}</p>
     </div>`;
-  // A scanned barcode means a physical book in hand; reset per book.
+  // A scanned barcode means a physical book in hand; reset per book. The
+  // picker only appears when copy-type tracking is enabled in Settings.
   setPendingMedium("print");
+  $("#medium-group").classList.toggle("hidden", !trackMedium());
   if (!confirmModal.open) confirmModal.showModal();
 }
 
@@ -725,7 +737,9 @@ async function openDetail(id) {
 
   const rows = [
     ["Author(s)", (b.authors ?? []).join(", ")],
-    ["Copy", MEDIA[b.medium ?? "print"] + (b.owned ? " · owned" : " · not owned")],
+    ...(trackMedium()
+      ? [["Copy", MEDIA[b.medium ?? "print"] + (b.owned ? " · owned" : " · not owned")]]
+      : []),
     ["Format", b.format],
     ["Publisher", b.publisher],
     ["Published", b.publishDate],
@@ -747,19 +761,27 @@ async function openDetail(id) {
         </table>
       </div>
     </div>
-    <div class="assign-row">
-      <span class="rate-label">Copy:</span>
-      ${Object.entries(MEDIA)
-        .map(([value, label]) =>
-          `<button class="filter-chip ${(b.medium ?? "print") === value ? "active" : ""}"
-                   data-set-medium="${value}">${label}</button>`)
-        .join("")}
-      ${b.shelf !== "owned" && b.shelf !== "wishlist"
+    ${(() => {
+      // Ownership is always editable for To Read / Finished; the medium
+      // chips appear only when copy-type tracking is enabled.
+      const ownedToggle = b.shelf !== "owned" && b.shelf !== "wishlist"
         ? `<button class="filter-chip ${b.owned ? "active" : ""}" data-owned-toggle
              title="Untoggle for library loans, Kindle Unlimited, borrowed audiobooks">
              ${b.owned ? "✓ I own it" : "Not owned"}</button>`
-        : ""}
-    </div>
+        : "";
+      const mediumChips = trackMedium()
+        ? Object.entries(MEDIA)
+            .map(([value, label]) =>
+              `<button class="filter-chip ${(b.medium ?? "print") === value ? "active" : ""}"
+                       data-set-medium="${value}">${label}</button>`)
+            .join("")
+        : "";
+      if (!mediumChips && !ownedToggle) return "";
+      return `<div class="assign-row">
+        <span class="rate-label">${mediumChips ? "Copy:" : "Ownership:"}</span>
+        ${mediumChips}${ownedToggle}
+      </div>`;
+    })()}
     ${allProfiles().length ? `
     <div class="assign-row">
       <span class="rate-label">Belongs to:</span>
@@ -1347,6 +1369,15 @@ function renderSettingsModal() {
         </span>
         <span class="row-go">›</span>
       </button>
+      <button class="settings-row" id="medium-toggle">
+        <span class="row-main">
+          <span class="row-icon">🎧</span>
+          <span>Track copy types
+            <span class="row-sub">Label books as print, e-book, or audiobook</span>
+          </span>
+        </span>
+        <span class="row-go">${trackMedium() ? "On" : "Off"}</span>
+      </button>
     </div>
 
     <div class="settings-section">
@@ -1375,6 +1406,16 @@ function renderSettingsModal() {
 
     <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
 
+  $("#medium-toggle").addEventListener("click", () => {
+    const next = !trackMedium();
+    localStorage.setItem(MEDIUM_KEY, next ? "1" : "0");
+    // Don't leave a hidden medium filter silently narrowing the shelves.
+    if (!next && ["ebook", "audio"].includes(shelfFilter.format)) {
+      shelfFilter.format = null;
+    }
+    renderSettingsModal();
+    renderShelf();
+  });
   el.querySelectorAll("[data-skin]").forEach((btn) =>
     btn.addEventListener("click", () => {
       themes.setSkin(btn.dataset.skin);

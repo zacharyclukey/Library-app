@@ -15,13 +15,14 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   count, ISBN-10/13, Open Library edition key, and that edition's cover art.
 - **Four shelves** — Owned, To Read, Completed, and Wishlist. TBR/Completed books
   can also be flagged as owned copies so series tracking sees them.
-- **Print, Kindle, and Audible aware** 📱🎧 — every book records its copy type
-  (Print / E-book / Audiobook) and whether you actually own it, so "listened on
-  Audible", "read on Kindle Unlimited", and "borrowed from the library" are all
-  representable: add to Finished, pick the medium, and uncheck *I own this
-  copy*. Copy types show on cards, are editable from the detail view, filter
-  like any format, and export to CSV. (Amazon offers no free API for Kindle or
-  Audible libraries, so these are logged in-app rather than auto-imported.)
+- **Print, Kindle, and Audible aware (opt-in)** 📱🎧 — "read but not owned" is
+  always available via the *I own this copy* checkbox. For people who also want
+  to track *where* they own things, enable **Settings → Track copy types** to
+  label books Print / E-book / Audiobook: a picker appears when adding, copy
+  types show on cards, are editable from the detail view, and filter like any
+  format. Off by default and invisible until enabled; CSV exports always carry
+  the column. (Amazon offers no free API for Kindle or Audible libraries, so
+  these are logged in-app rather than auto-imported.)
 - **Wishlist + "find this book" links** 🎁 — missing series books can be
   wishlisted straight from the series view, and every book links out to
   Amazon (direct product page via its ISBN when possible), Barnes & Noble,
