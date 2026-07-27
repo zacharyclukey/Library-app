@@ -13,8 +13,13 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Edition-accurate records** — the scanned ISBN identifies the *specific version*
   you own: publisher, publish date, physical format (hardcover/paperback), page
   count, ISBN-10/13, Open Library edition key, and that edition's cover art.
-- **Four shelves** — Owned, To Read, Completed, and Wishlist. TBR/Completed books
-  can also be flagged as owned copies so series tracking sees them.
+- **Four shelves** — Owned, To Read, Finished, and Wishlist. Owning a book is a
+  property of the book, not a location: a book you own that's also on To Read or
+  Finished appears on **both** shelves (marked with a small "also on" hint), so
+  the Owned shelf is always your full collection.
+- **Currently reading** 📖 — flag what you're reading now from a book's detail
+  view; it's badged on the card, floats to the top of To Read, has its own
+  filter chip, and clears automatically when you move the book to Finished.
 - **Print, Kindle, and Audible aware (opt-in)** 📱🎧 — "read but not owned" is
   always available via the *I own this copy* checkbox. For people who also want
   to track *where* they own things, enable **Settings → Track copy types** to

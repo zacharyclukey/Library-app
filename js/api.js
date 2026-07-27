@@ -167,9 +167,9 @@ function googleVolumeToBook(item, fallbackIsbn) {
 
 // ---------- Title search (manual fallback) ----------
 
-export async function searchByTitle(query) {
+export async function searchByTitle(query, limit = 40) {
   const res = await fetch(
-    `${OL}/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,first_publish_year,cover_i,isbn,editions&limit=8`
+    `${OL}/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,first_publish_year,cover_i,isbn,editions&limit=${limit}`
   );
   if (!res.ok) return [];
   const data = await res.json();
@@ -203,16 +203,22 @@ export async function fetchWorkSubjects(workKey) {
   }
 }
 
-// Well-rated books matching an Open Library query (author:"..." or
-// subject:"..."), for building recommendations.
-export async function searchRanked(query, limit = 10) {
-  const res = await fetch(
-    `${OL}/search.json?q=${encodeURIComponent(query)}&sort=rating` +
-      `&fields=key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count,number_of_pages_median&limit=${limit}`
-  );
+// Candidate books for recommendations. Open Library's rating data is sparse,
+// so this deliberately does NOT require a rating — callers score results
+// instead, which keeps the candidate pool from collapsing to the handful of
+// heavily-rated titles (manga volumes, mostly).
+export async function searchRanked(query, { limit = 20, sort = "rating" } = {}) {
+  const fields =
+    "key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count," +
+    "number_of_pages_median,edition_count";
+  const url =
+    `${OL}/search.json?q=${encodeURIComponent(query)}` +
+    (sort ? `&sort=${sort}` : "") +
+    `&fields=${fields}&limit=${limit}`;
+  const res = await fetch(url);
   if (!res.ok) return [];
   return ((await res.json()).docs ?? [])
-    .filter((d) => (d.ratings_count ?? 0) >= 20)
+    .filter((d) => d.title)
     .map((d) => ({
       workKey: d.key,
       title: d.title,
@@ -222,7 +228,29 @@ export async function searchRanked(query, limit = 10) {
       avgRating: d.ratings_average ?? null,
       ratingsCount: d.ratings_count ?? 0,
       pages: d.number_of_pages_median ?? null,
+      editions: d.edition_count ?? 0,
     }));
+}
+
+// Solr range clause so a publication-age filter narrows the query itself.
+// Filtering only client-side threw away nearly every result, since ranked
+// candidates skew old and few of them land in a 2-year window.
+export function yearClause(age) {
+  const y = new Date().getFullYear();
+  if (age === "new") return ` AND first_publish_year:[${y - 2} TO ${y + 1}]`;
+  if (age === "recent") return ` AND first_publish_year:[${y - 10} TO ${y + 1}]`;
+  if (age === "classic") return ` AND first_publish_year:[* TO ${y - 20}]`;
+  return "";
+}
+
+// Run a query, and if the extra clauses wipe out the results (or the Solr
+// syntax isn't accepted), fall back to the bare query so Discover still has
+// something to show — the caller re-checks constraints client-side anyway.
+export async function searchRankedWithFallback(baseQuery, clauses, opts) {
+  const full = baseQuery + clauses;
+  let rows = await searchRanked(full, opts);
+  if (rows.length === 0 && clauses) rows = await searchRanked(baseQuery, opts);
+  return rows;
 }
 
 // ---------- Series detection & listing ----------

@@ -34,7 +34,7 @@ let memberFilter = "me"; // "me" | "all" | a profile name
 let searchQuery = "";
 
 const emptyFilter = () =>
-  ({ genre: null, pages: null, series: null, age: null, format: null, rated: null });
+  ({ genre: null, pages: null, series: null, age: null, format: null, rated: null, status: null });
 let shelfFilter = emptyFilter();
 let shelfSort = "added";
 
@@ -193,10 +193,17 @@ function esc(s) {
   return div.innerHTML;
 }
 
+// The Owned shelf is "everything you own", so a book you own that also sits
+// on To Read / Finished / Wishlist appears here too — it's a property of the
+// book, not a mutually exclusive location.
+function booksForShelf(shelf) {
+  return shelf === "owned" ? db.getOwnedBooks() : db.getBooksOnShelf(shelf);
+}
+
 function renderShelf() {
-  let books = db.getBooksOnShelf(currentShelf);
+  let books = booksForShelf(currentShelf);
   for (const shelf of SHELVES) {
-    $(`#count-${shelf}`).textContent = db.getBooksOnShelf(shelf).length;
+    $(`#count-${shelf}`).textContent = booksForShelf(shelf).length;
   }
 
   const personal = PERSONAL_SHELVES.includes(currentShelf);
@@ -215,6 +222,10 @@ function renderShelf() {
   const hadBeforeFilter = books.length;
   books = books.filter((b) => flt.matchesFilter(b, shelfFilter, { myRating: myRating(b) }));
   books = flt.sortBooks(books, shelfSort, { ratingOf: myRating });
+  // What you're reading right now belongs at the top of To Read.
+  if (currentShelf === "tbr" && shelfSort === "added") {
+    books = [...books].sort((a, b) => (b.reading ? 1 : 0) - (a.reading ? 1 : 0));
+  }
   updateFilterBadge();
 
   visibleBooks = books;
@@ -254,8 +265,12 @@ function gridCard(b, showNames) {
         <p class="grid-author">${esc((b.authors ?? []).join(", "))}</p>
       </div>
       <div class="grid-meta">
+        ${b.reading ? `<span class="mini-badge reading" title="Currently reading">📖</span>` : ""}
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
         ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${MEDIUM_ICON[b.medium]}</span>` : ""}
+        ${currentShelf === "owned" && b.shelf !== "owned"
+          ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[b.shelf])}">${SHELF_ICON[b.shelf]}</span>`
+          : ""}
         ${missing ? `<span class="mini-badge" title="${missing} more in this series">+${missing}</span>` : ""}
         ${showNames && b.profile ? `<span class="mini-badge who">${esc(b.profile[0])}</span>` : ""}
       </div>
@@ -285,6 +300,10 @@ function listCard(b, showNames) {
         <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
         ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
         <div class="badges">
+          ${b.reading ? `<span class="badge reading-badge">📖 Reading now</span>` : ""}
+          ${currentShelf === "owned" && b.shelf !== "owned"
+            ? `<span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>`
+            : ""}
           ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
           ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
           ${seriesBadge}${moreBadge}
@@ -498,6 +517,9 @@ function renderFilterPanel() {
   );
   panel.appendChild(chipGroup("Format", formatOptions, shelfFilter.format, set("format")));
   panel.appendChild(chipGroup("Rating", flt.RATED_OPTIONS, shelfFilter.rated, set("rated")));
+  if (currentShelf === "tbr" || currentShelf === "owned") {
+    panel.appendChild(chipGroup("Status", flt.STATUS_OPTIONS, shelfFilter.status, set("status")));
+  }
 
   const sortWrap = document.createElement("div");
   sortWrap.className = "filter-group";
@@ -731,7 +753,9 @@ $("#title-form").addEventListener("submit", async (e) => {
   if (!q) return;
   scanStatus.textContent = "Searching…";
   const results = await api.searchByTitle(q);
-  scanStatus.textContent = results.length ? "" : "No matches found.";
+  scanStatus.textContent = results.length
+    ? `${results.length} match${results.length === 1 ? "" : "es"} — scroll for more.`
+    : "No matches found.";
   searchResults.innerHTML = results
     .map(
       (r, i) => `
@@ -886,6 +910,10 @@ async function openDetail(id) {
     ${(() => {
       // Ownership is always editable for To Read / Finished; the medium
       // chips appear only when copy-type tracking is enabled.
+      const readingToggle = b.shelf === "tbr" || b.shelf === "owned"
+        ? `<button class="filter-chip ${b.reading ? "active" : ""}" data-reading-toggle>
+             ${b.reading ? "📖 Reading now" : "📖 Start reading"}</button>`
+        : "";
       const ownedToggle = b.shelf !== "owned" && b.shelf !== "wishlist"
         ? `<button class="filter-chip ${b.owned ? "active" : ""}" data-owned-toggle
              title="Untoggle for library loans, Kindle Unlimited, borrowed audiobooks">
@@ -898,10 +926,10 @@ async function openDetail(id) {
                        data-set-medium="${value}">${label}</button>`)
             .join("")
         : "";
-      if (!mediumChips && !ownedToggle) return "";
+      if (!mediumChips && !ownedToggle && !readingToggle) return "";
       return `<div class="assign-row">
-        <span class="rate-label">${mediumChips ? "Copy:" : "Ownership:"}</span>
-        ${mediumChips}${ownedToggle}
+        <span class="rate-label">${mediumChips ? "Copy:" : "Status:"}</span>
+        ${mediumChips}${ownedToggle}${readingToggle}
       </div>`;
     })()}
     ${allProfiles().length ? `
@@ -954,7 +982,9 @@ async function openDetail(id) {
       const to = btn.dataset.move;
       // Moving off the wishlist to owned/tbr/completed means you got the book.
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-      db.updateBook(id, { shelf: to, owned });
+      // Finishing a book (or shelving it away) ends the current read.
+      const reading = to === "tbr" || to === "owned" ? b.reading ?? false : false;
+      db.updateBook(id, { shelf: to, owned, reading });
       detailModal.close();
       renderShelf();
     })
@@ -966,6 +996,11 @@ async function openDetail(id) {
       openDetail(id);
     })
   );
+  $("#detail-content").querySelector("[data-reading-toggle]")?.addEventListener("click", () => {
+    db.updateBook(id, { reading: !b.reading });
+    renderShelf();
+    openDetail(id);
+  });
   $("#detail-content").querySelector("[data-owned-toggle]")?.addEventListener("click", () => {
     db.updateBook(id, { owned: !b.owned });
     renderShelf();
@@ -1151,10 +1186,14 @@ async function loadRecs(container) {
 
 // Taste signals: authors weighted by how much you engaged (high personal
 // rating > wishlisted > merely owned), plus common subjects across your
-// works. When Discover filters are active, shelf books matching the filter
-// drive the profile (3x weight) and the rest of the library is context;
-// candidates are then constrained to the filter too. Results come from
-// Open Library ranked by community rating.
+// works and the genres already on your shelves. When Discover filters are
+// active, shelf books matching them drive the profile (3x weight) and the
+// rest of the library is context; candidates are constrained to match.
+//
+// Breadth matters here: Open Library's rating data is thin, so demanding
+// well-rated candidates used to collapse the whole pool down to a couple of
+// heavily-rated series. Instead this casts a wide net and scores afterwards,
+// capping how many books any one author or series can contribute.
 async function buildRecommendations(books, f) {
   const focusFilter = { ...emptyFilter(), genre: f.genre, pages: f.pages, age: f.age };
   const anyFilter = !!(f.genre || f.pages || f.age);
@@ -1169,7 +1208,7 @@ async function buildRecommendations(books, f) {
   }
   const topAuthors = Object.entries(authorScore)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
+    .slice(0, 5)
     .map(([a]) => a);
 
   // Mine subjects from filter-matching works first so a Fantasy filter
@@ -1178,7 +1217,7 @@ async function buildRecommendations(books, f) {
   const pool = anyFilter
     ? [...books.filter(inFocus), ...books.filter((b) => !inFocus(b))]
     : books;
-  const withWorks = pool.filter((b) => b.workKey).slice(0, 8);
+  const withWorks = pool.filter((b) => b.workKey).slice(0, 10);
   await Promise.allSettled(
     withWorks.map(async (b) => {
       (await api.fetchWorkSubjects(b.workKey)).forEach(
@@ -1188,34 +1227,100 @@ async function buildRecommendations(books, f) {
   );
   const topSubjects = Object.entries(subjectScore)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
+    .slice(0, 5)
     .map(([s]) => s);
 
+  // Genres already on the shelves, as a backstop when subject tags are thin
+  // (books added from search or Discover often have none yet).
+  const genreScore = {};
+  books.forEach((b) =>
+    flt.genresOf(b).forEach((g) => (genreScore[g] = (genreScore[g] ?? 0) + focusBoost(b)))
+  );
+  const topGenres = Object.entries(genreScore)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([g]) => g);
+
   const genreTerm = f.genre ? flt.genreQueryTerm(f.genre) : null;
-  const withGenre = (q) => (genreTerm ? `${q} subject:"${genreTerm}"` : q);
+  const withGenre = (q) => (genreTerm ? `${q} AND subject:"${genreTerm}"` : q);
+  const clauses = api.yearClause(f.age);
+  // New releases have few ratings, so ranking them by rating buries them.
+  const sort = f.age === "new" ? "new" : "rating";
+
   const queries = [
     ...topAuthors.map((a) => ({ q: withGenre(`author:"${a}"`), reason: `More by ${a}` })),
     ...topSubjects
       .filter((s) => s.toLowerCase() !== genreTerm)
       .map((s) => ({ q: withGenre(`subject:"${s}"`), reason: s })),
   ];
-  if (genreTerm) queries.push({ q: `subject:"${genreTerm}"`, reason: `Top-rated ${f.genre}` });
+  if (genreTerm) {
+    queries.push({ q: `subject:"${genreTerm}"`, reason: `Top-rated ${f.genre}` });
+  } else {
+    topGenres.forEach((g) =>
+      queries.push({ q: `subject:"${flt.genreQueryTerm(g)}"`, reason: `${g} you might like` })
+    );
+  }
 
   const have = new Set(books.map((b) => normTitle(b.title)));
+  const haveWorks = new Set(books.map((b) => b.workKey).filter(Boolean));
   const found = new Map();
+
   await Promise.allSettled(
     queries.map(async ({ q, reason }) => {
-      for (const r of await api.searchRanked(q, 12)) {
+      const rows = await api.searchRankedWithFallback(q, clauses, { limit: 25, sort });
+      for (const r of rows) {
         if (!flt.pagesMatch(r.pages, f.pages)) continue;
         if (f.age && !flt.ageMatches(r.year, f.age)) continue;
-        const t = normTitle(r.title);
-        if (!have.has(t) && !found.has(t)) found.set(t, { ...r, reason });
+        if (haveWorks.has(r.workKey)) continue;
+        if (/box(ed)? set|omnibus|\bbundle\b/i.test(r.title)) continue;
+
+        const key = seriesKey(r.title);
+        if (have.has(normTitle(r.title)) || have.has(key)) continue;
+        const existing = found.get(key);
+        if (existing) {
+          existing.hits++; // corroborated by another query — a better signal
+        } else {
+          found.set(key, { ...r, reason, hits: 1 });
+        }
       }
     })
   );
-  return [...found.values()]
-    .sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0))
-    .slice(0, 15);
+
+  // Score: community rating (neutral default when unrated), a nudge for how
+  // widely read and reprinted it is, and a bonus for showing up in more than
+  // one of your taste queries.
+  const scored = [...found.values()].map((r) => ({
+    ...r,
+    score:
+      (r.avgRating ?? 3.6) +
+      Math.min(r.ratingsCount ?? 0, 400) / 800 +
+      Math.min(r.editions ?? 0, 40) / 200 +
+      (r.hits - 1) * 0.35,
+  }));
+  scored.sort((a, b) => b.score - a.score);
+
+  // Keep the list varied: at most two books per author.
+  const perAuthor = {};
+  const out = [];
+  for (const r of scored) {
+    const a = r.authors?.[0] ?? "?";
+    if ((perAuthor[a] ?? 0) >= 2) continue;
+    perAuthor[a] = (perAuthor[a] ?? 0) + 1;
+    out.push(r);
+    if (out.length >= 24) break;
+  }
+  return out;
+}
+
+// Collapse volume/part numbering so a long manga or serial contributes one
+// entry rather than flooding the list ("One Piece, Vol. 3" → "one piece").
+function seriesKey(title) {
+  return normTitle(
+    String(title).replace(
+      /[,:]?\s*(vol\.?|volume|bk\.?|book|part|no\.?|#)\s*\d+.*$/i,
+      ""
+    )
+  );
 }
 
 function renderRecs(el, recs) {
@@ -1288,7 +1393,7 @@ $("#export-btn").addEventListener("click", () => showScreen("export"));
 function exportBooks() {
   if (exportScope === "all") return db.getAllBooks();
   if (exportScope === currentShelf && exportUseView) return visibleBooks;
-  return db.getBooksOnShelf(exportScope);
+  return booksForShelf(exportScope);
 }
 
 function exportTitle() {
