@@ -165,6 +165,14 @@
       <button class="close-btn" data-close="confirm-modal" aria-label="Close">✕</button>
     </div>
     <div id="confirm-book" class="confirm-book"></div>
+    <div class="filter-group" style="margin-bottom:0.7rem">
+      <span class="filter-label">Copy type</span>
+      <div class="profile-filter" id="medium-choice" style="margin-top:0.25rem">
+        <button class="filter-chip active" data-medium="print">📕 Print</button>
+        <button class="filter-chip" data-medium="ebook">📱 E-book / Kindle</button>
+        <button class="filter-chip" data-medium="audio">🎧 Audiobook / Audible</button>
+      </div>
+    </div>
     <div class="shelf-choice">
       <button class="shelf-pick" data-add-shelf="owned"><span>📗</span> Owned</button>
       <button class="shelf-pick" data-add-shelf="tbr"><span>🔖</span> To Read</button>
@@ -173,7 +181,8 @@
     </div>
     <label class="also-own">
       <input type="checkbox" id="also-own-checkbox" checked />
-      Also mark as owned (for To Read / Finished)
+      I own this copy — uncheck for library loans, Kindle&nbsp;Unlimited,
+      borrowed audiobooks, etc. (To Read / Finished only)
     </label>
   </dialog>
 

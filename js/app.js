@@ -58,6 +58,11 @@ const SHELF_LABEL = { owned: "Owned", tbr: "To Read", completed: "Finished", wis
 const SHELF_ICON = { owned: "📗", tbr: "🔖", completed: "✅", wishlist: "🎁" };
 const SHELVES = ["owned", "tbr", "completed", "wishlist"];
 
+// How the copy exists: physical, Kindle/e-book, or Audible/audiobook.
+// Older records have no medium; they're treated as print.
+const MEDIA = { print: "📕 Print", ebook: "📱 E-book", audio: "🎧 Audiobook" };
+const MEDIUM_ICON = { ebook: "📱", audio: "🎧" };
+
 const VIEW_KEY = "shelfie.view.v1";
 let viewMode = localStorage.getItem(VIEW_KEY) ?? "grid";
 
@@ -174,6 +179,7 @@ function gridCard(b, showNames) {
       </div>
       <div class="grid-meta">
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
+        ${MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${MEDIUM_ICON[b.medium]}</span>` : ""}
         ${missing ? `<span class="mini-badge" title="${missing} more in this series">+${missing}</span>` : ""}
         ${showNames && b.profile ? `<span class="mini-badge who">${esc(b.profile[0])}</span>` : ""}
       </div>
@@ -203,6 +209,7 @@ function listCard(b, showNames) {
         <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
         ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
         <div class="badges">
+          ${MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
           ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
           ${seriesBadge}${moreBadge}
         </div>
@@ -630,6 +637,19 @@ $("#title-form").addEventListener("submit", async (e) => {
 
 // ---------- confirm / shelf choice ----------
 
+let pendingMedium = "print";
+
+function setPendingMedium(medium) {
+  pendingMedium = medium;
+  document.querySelectorAll("#medium-choice [data-medium]").forEach((btn) =>
+    btn.classList.toggle("active", btn.dataset.medium === medium)
+  );
+}
+
+document.querySelectorAll("#medium-choice [data-medium]").forEach((btn) =>
+  btn.addEventListener("click", () => setPendingMedium(btn.dataset.medium))
+);
+
 function queueBookForConfirm(book) {
   pendingBooks.push(book);
   if (!confirmModal.open) showNextPendingBook();
@@ -652,6 +672,8 @@ function showNextPendingBook() {
       <p class="isbn">${book.isbn13 ? "ISBN-13 " + esc(book.isbn13) : ""}
         ${book.isbn10 ? " · ISBN-10 " + esc(book.isbn10) : ""}</p>
     </div>`;
+  // A scanned barcode means a physical book in hand; reset per book.
+  setPendingMedium("print");
   if (!confirmModal.open) confirmModal.showModal();
 }
 
@@ -662,7 +684,13 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     const shelf = btn.dataset.addShelf;
     const alsoOwn = $("#also-own-checkbox").checked;
     const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
-    db.addBook({ ...book, shelf, owned, profile: currentProfile() ?? null });
+    db.addBook({
+      ...book,
+      shelf,
+      owned,
+      medium: pendingMedium,
+      profile: currentProfile() ?? null,
+    });
     // Fetch genre subjects in the background so filters know this book.
     if (book.workKey && !book.subjects?.length) {
       api.fetchWorkSubjects(book.workKey).then((subjects) => {
@@ -697,6 +725,7 @@ async function openDetail(id) {
 
   const rows = [
     ["Author(s)", (b.authors ?? []).join(", ")],
+    ["Copy", MEDIA[b.medium ?? "print"] + (b.owned ? " · owned" : " · not owned")],
     ["Format", b.format],
     ["Publisher", b.publisher],
     ["Published", b.publishDate],
@@ -717,6 +746,19 @@ async function openDetail(id) {
           ${rows.map(([k, v]) => `<tr><th>${k}</th><td>${esc(String(v))}</td></tr>`).join("")}
         </table>
       </div>
+    </div>
+    <div class="assign-row">
+      <span class="rate-label">Copy:</span>
+      ${Object.entries(MEDIA)
+        .map(([value, label]) =>
+          `<button class="filter-chip ${(b.medium ?? "print") === value ? "active" : ""}"
+                   data-set-medium="${value}">${label}</button>`)
+        .join("")}
+      ${b.shelf !== "owned" && b.shelf !== "wishlist"
+        ? `<button class="filter-chip ${b.owned ? "active" : ""}" data-owned-toggle
+             title="Untoggle for library loans, Kindle Unlimited, borrowed audiobooks">
+             ${b.owned ? "✓ I own it" : "Not owned"}</button>`
+        : ""}
     </div>
     ${allProfiles().length ? `
     <div class="assign-row">
@@ -773,6 +815,18 @@ async function openDetail(id) {
       renderShelf();
     })
   );
+  $("#detail-content").querySelectorAll("[data-set-medium]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      db.updateBook(id, { medium: btn.dataset.setMedium });
+      renderShelf();
+      openDetail(id);
+    })
+  );
+  $("#detail-content").querySelector("[data-owned-toggle]")?.addEventListener("click", () => {
+    db.updateBook(id, { owned: !b.owned });
+    renderShelf();
+    openDetail(id);
+  });
   $("#detail-content").querySelectorAll("[data-assign]").forEach((btn) =>
     btn.addEventListener("click", () => {
       db.updateBook(id, { profile: btn.dataset.assign || null });

@@ -759,6 +759,8 @@ img.cover.missing { display: none; }
 .series-badge { background: var(--accent-soft); color: var(--ink-soft); border-color: var(--accent-border); }
 .more-badge { background: var(--gold-soft); color: var(--gold-ink); border-color: var(--gold-border); font-weight: 600; }
 .profile-badge { background: var(--green-soft); color: var(--green); border-color: var(--green-border); }
+.medium-badge { background: var(--accent-soft); color: var(--ink-soft); border-color: var(--accent-border); }
+.mini-badge.medium { background: var(--accent-soft); color: var(--ink-soft); border-color: var(--accent-border); }
 
 .empty-state {
   text-align: center;

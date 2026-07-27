@@ -79,6 +79,8 @@ export const AGE_OPTIONS = [
 export const FORMAT_OPTIONS = [
   ["hardcover", "Hardcover"],
   ["paperback", "Paperback"],
+  ["ebook", "E-book"],
+  ["audio", "Audiobook"],
 ];
 export const RATED_OPTIONS = [
   ["4plus", "Rated 4★+"],
@@ -110,6 +112,8 @@ export function matchesFilter(book, f, opts = {}) {
   if (f.age && !ageMatches(yearOf(book), f.age)) return false;
   if (f.format === "hardcover" && !/hard/i.test(book.format ?? "")) return false;
   if (f.format === "paperback" && !/paper|soft|mass market/i.test(book.format ?? "")) return false;
+  if (f.format === "ebook" && book.medium !== "ebook") return false;
+  if (f.format === "audio" && book.medium !== "audio") return false;
   if (f.rated === "4plus" && !((opts.myRating ?? 0) >= 4)) return false;
   if (f.rated === "unrated" && opts.myRating) return false;
   return true;
