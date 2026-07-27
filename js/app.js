@@ -348,9 +348,6 @@ function renderStatsScreen() {
             )
             .join("")}
         </div>
-        <p class="muted stat-note">Counts books you read here — waiting on To Read, or
-          marked as reading, then moved to Finished. Books logged straight onto Finished
-          are older reads, so they stay out of this year's count.</p>
       </div>
     </div>
 
@@ -1689,6 +1686,59 @@ bookList.addEventListener("pointerdown", (e) => {
   bookList.addEventListener(ev, () => clearTimeout(pressTimer), { passive: true })
 );
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
+// Say when you read something. Books the app watched you finish already know,
+// but a book logged from an old shelf doesn't — setting a month here is how
+// you put it in your reading year. Two selects rather than a date input:
+// month is the right grain, and it behaves the same on every phone.
+function readMonthRow(book) {
+  if (book.shelf !== "completed") return "";
+  const when = book.readHere && book.finishedAt ? new Date(book.finishedAt) : null;
+  const valid = when && !Number.isNaN(when.getTime());
+  const thisYear = new Date().getFullYear();
+  const years = Array.from({ length: 8 }, (_, i) => thisYear - i);
+  const selMonth = valid ? when.getMonth() : "";
+  const selYear = valid ? when.getFullYear() : thisYear;
+  return `
+    <div class="read-when">
+      <span class="filter-label">Read in</span>
+      <div class="read-when-row">
+        <select id="read-month">
+          <option value="">—</option>
+          ${MONTH_NAMES.map((m, i) =>
+            `<option value="${i}" ${selMonth === i ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+        <select id="read-year">
+          ${years.map((y) =>
+            `<option value="${y}" ${selYear === y ? "selected" : ""}>${y}</option>`).join("")}
+        </select>
+      </div>
+    </div>`;
+}
+
+function wireReadMonth(book) {
+  const month = $("#read-month");
+  const year = $("#read-year");
+  if (!month || !year) return;
+  const apply = () => {
+    if (month.value === "") {
+      // Blank means "don't put this in my reading year" — the record keeps
+      // its finish date, it just stops counting.
+      db.updateBook(book.id, { readHere: false });
+      toast("Left out of your reading year");
+    } else {
+      const when = new Date(Number(year.value), Number(month.value), 15, 12);
+      db.updateBook(book.id, { finishedAt: when.toISOString(), readHere: true });
+      toast(`Read in ${MONTH_NAMES[Number(month.value)]} ${year.value}`);
+    }
+    renderShelf();
+  };
+  month.addEventListener("change", apply);
+  year.addEventListener("change", () => month.value !== "" && apply());
+}
+
 async function openDetail(id) {
   const b = db.getBook(id);
   if (!b) return;
@@ -1796,6 +1846,7 @@ async function openDetail(id) {
       .filter(([name, r]) => name !== currentProfile() && r)
       .map(([name, r]) => `<p class="other-rating">${esc(name)}: <span class="card-rating">${starString(r)}</span></p>`)
       .join("")}
+    ${readMonthRow(b)}
     <div class="review-section">
       <span class="filter-label">Your review</span>
       <textarea id="review-input" rows="3" placeholder="What did you think? Reviews sync to your shared library.">${esc(b.reviews?.[currentProfile()]?.text ?? "")}</textarea>
@@ -1842,6 +1893,7 @@ async function openDetail(id) {
       </div>
     </details>`;
   detailModal.showModal();
+  wireReadMonth(b);
 
   $("#detail-content").querySelectorAll("[data-move]").forEach((btn) =>
     btn.addEventListener("click", () => {

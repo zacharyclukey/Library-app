@@ -838,8 +838,6 @@ body {
 .stat-tile b { display: block; font-family: var(--serif); font-size: 1.35rem; line-height: 1.1; }
 .stat-tile span { font-size: 0.68rem; color: var(--muted); }
 .stat-line { margin: 0.3rem 0 0.7rem; font-size: 0.95rem; font-family: var(--serif); }
-/* Beats the generic `.screen-body p` sizing — this is a footnote. */
-.screen-body p.stat-note { margin: 0.6rem 0 0; font-size: 0.72rem; line-height: 1.45; }
 
 .month-row { display: flex; align-items: flex-end; gap: 0.25rem; height: 4.5rem; }
 .month { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 0.2rem; }
@@ -1794,6 +1792,20 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .rate-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.85rem; }
 .assign-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
 .other-rating { margin: -0.45rem 0 0.75rem; font-size: 0.82rem; color: var(--muted); }
+
+/* "Read in" month/year, for putting an older read into your reading year. */
+.read-when { margin: 0.9rem 0 1rem; }
+.read-when-row { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
+.read-when select {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+.read-when select:first-child { flex: 1; }
 
 .review-section { margin: 0 0 1rem; display: grid; gap: 0.45rem; }
 #review-input {

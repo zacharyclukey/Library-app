@@ -122,12 +122,12 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Your reading** 📊 — tap the greeting (or Settings) for totals, books and
   pages finished this year with a per-month bar row, most-read authors, and the
   genres on your shelves. All derived from data already on the shelves.
-  *This year* counts reading, not cataloguing: a book only lands in it if the
-  app watched you finish it — waiting on To Read, or flagged as currently
-  reading, then moved to Finished. Logging books you read years ago (straight
-  onto Finished, or by marking off an already-shelved collection) leaves the
-  year's count alone. Nothing extra to tick — the two paths that count are the
-  ones you'd take anyway, and the screen says so in a footnote.
+  *This year* counts reading, not cataloguing: a book lands in it when the app
+  watched you finish it — waiting on To Read, or flagged as currently reading,
+  then moved to Finished. Logging books you read years ago leaves the year's
+  count alone. It works silently; the only visible part is a **Read in**
+  month/year on any finished book, for putting an older read into the right
+  month yourself (or leaving it out).
 - **Honest connection status** — when you're offline or sync is paused, a quiet
   pill says so and reassures you that changes are saved on the phone. A failed
   book search says the lookup failed rather than "no matches found", Discover
