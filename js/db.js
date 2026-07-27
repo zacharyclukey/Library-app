@@ -66,6 +66,17 @@ export function addBook(book) {
   sync.upsertRemote(books[existing >= 0 ? existing : books.length - 1]);
 }
 
+// Wholesale overwrite, unlike addBook's merge — needed for Undo, where a
+// merge would leave newly-added keys (a first-ever rating, say) in place.
+export function replaceBook(book) {
+  const books = load();
+  const i = books.findIndex((b) => b.id === book.id);
+  if (i >= 0) books[i] = { ...book };
+  else books.push({ ...book });
+  save(books);
+  sync.upsertRemote(book);
+}
+
 export function updateBook(id, patch) {
   const books = load();
   const i = books.findIndex((b) => b.id === id);

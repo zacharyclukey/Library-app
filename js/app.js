@@ -22,7 +22,30 @@ const searchResults = $("#search-results");
 let currentShelf = "owned";
 let visibleBooks = []; // what the current shelf is showing, for exports
 let pendingBooks = []; // queue of looked-up books waiting for shelf choice
-const seriesCache = new Map(); // book.id -> { series, books } | null
+// book.id -> { series, books, checkedAt } | null (null = check in flight).
+// Persisted so shelves render complete instantly instead of re-asking Open
+// Library every session; entries refresh after a week.
+const seriesCache = new Map();
+const SERIES_CACHE_KEY = "shelfie.seriesCache.v1";
+const SERIES_TTL_MS = 7 * 24 * 3600 * 1000;
+
+(function loadSeriesCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SERIES_CACHE_KEY)) ?? {};
+    const now = Date.now();
+    for (const [id, v] of Object.entries(raw)) {
+      if (v && now - (v.checkedAt ?? 0) < SERIES_TTL_MS) seriesCache.set(id, v);
+    }
+  } catch { /* corrupt cache — start clean */ }
+})();
+
+function persistSeriesCache() {
+  const out = {};
+  for (const [id, v] of seriesCache) if (v) out[id] = v;
+  try {
+    localStorage.setItem(SERIES_CACHE_KEY, JSON.stringify(out));
+  } catch { /* storage full — cache stays in-memory */ }
+}
 
 // ---------- profiles ----------
 // A profile is just a name. The Owned shelf is shared by the household;
@@ -136,6 +159,105 @@ function storeLinks(b) {
     ["🏛️ Library (WorldCat)", `https://search.worldcat.org/search?q=${q}`],
     ["⭐ Goodreads", `https://www.goodreads.com/search?q=${q}`],
   ];
+}
+
+// ---------- the "no homework" nudge ----------
+// A backlog of unrated books should never feel like a chore, so there is
+// deliberately no "47 books need rating" counter anywhere. Instead: at most
+// ONE finished-but-unrated book, offered occasionally, rateable in a single
+// tap, and easy to wave off. Any interaction snoozes it for a day.
+
+const NUDGE_SNOOZE_KEY = "shelfie.nudgeSnooze.v1";
+
+function snoozeNudge(hours = 20) {
+  localStorage.setItem(NUDGE_SNOOZE_KEY, String(Date.now() + hours * 3600 * 1000));
+}
+
+function renderNudge() {
+  const el = $("#nudge-card");
+  const snoozedUntil = Number(localStorage.getItem(NUDGE_SNOOZE_KEY) ?? 0);
+  const candidates = db
+    .getBooksOnShelf("completed")
+    .filter((b) => !myRating(b) && (!b.profile || b.profile === currentProfile()));
+
+  if (Date.now() < snoozedUntil || !candidates.length || !currentProfile()) {
+    el.classList.add("hidden");
+    return;
+  }
+
+  // Oldest unrated first — the one most likely already forgotten is the one
+  // worth asking about while it's still a pleasant memory, not a chore.
+  const b = candidates[0];
+  el.innerHTML = `
+    <div class="nudge-main">
+      <span class="nudge-q">How was <strong>${esc(b.title)}</strong>?</span>
+      <span class="nudge-stars">
+        ${[1, 2, 3, 4, 5]
+          .map((n) => `<button data-nudge-rate="${n}" aria-label="Rate ${n}">☆</button>`)
+          .join("")}
+      </span>
+    </div>
+    <button class="link-btn" data-nudge-dismiss>Not now</button>`;
+  el.classList.remove("hidden");
+
+  el.querySelectorAll("[data-nudge-rate]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const me = currentProfile() ?? "Me";
+      const value = Number(btn.dataset.nudgeRate);
+      db.updateBook(b.id, { ratings: { ...(b.ratings ?? {}), [me]: value }, rating: null });
+      shareToCommunity(b.id);
+      snoozeNudge();
+      navigator.vibrate?.(12);
+      toast(`${"★".repeat(value)} for “${b.title}” — thanks!`);
+      renderShelf();
+    })
+  );
+  el.querySelector("[data-nudge-dismiss]").addEventListener("click", () => {
+    snoozeNudge(72); // waved off: stay quiet for three days
+    el.classList.add("hidden");
+  });
+}
+
+// ---------- toasts & undo ----------
+// Replaces browser confirm()/alert() popups: actions happen immediately and
+// a themed toast offers Undo, which feels native and makes mistakes cheap.
+
+let toastTimer = null;
+let lastUndo = null;
+
+function toast(message, { actionLabel, onAction, ms = 5000 } = {}) {
+  const region = $("#toast-region");
+  region.innerHTML = `
+    <div class="toast">
+      <span>${esc(message)}</span>
+      ${actionLabel ? `<button class="toast-action">${esc(actionLabel)}</button>` : ""}
+    </div>`;
+  region.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => region.classList.remove("show"), ms);
+  region.querySelector(".toast-action")?.addEventListener("click", () => {
+    region.classList.remove("show");
+    clearTimeout(toastTimer);
+    onAction?.();
+  });
+}
+
+// Snapshot a book so an action can be reversed with one tap.
+function undoable(message, book, apply) {
+  const before = JSON.parse(JSON.stringify(book));
+  apply();
+  lastUndo = before;
+  navigator.vibrate?.(12);
+  toast(message, {
+    actionLabel: "Undo",
+    onAction: () => {
+      db.replaceBook(before); // replace, not merge: undo must remove new keys too
+      seriesCache.delete(before.id);
+      shareToCommunity(before.id);
+      renderShelf();
+      toast("Undone");
+    },
+  });
 }
 
 // ---------- screen router ----------
@@ -253,16 +375,75 @@ function renderShelf() {
   emptyState.classList.toggle("hidden", books.length > 0);
   $("#shelf-summary").textContent = books.length ? xport.summaryLine(books) : "";
 
-  const showNames = allProfiles().length > 1;
   bookList.className = "book-list " + viewMode;
-  bookList.innerHTML = books
-    .map((b) => (viewMode === "grid" ? gridCard(b, showNames) : listCard(b, showNames)))
-    .join("");
+  bookList.innerHTML = "";
+  renderQueue = books.slice();
+  renderShowNames = allProfiles().length > 1;
+  renderChunk();
+  renderAzRail(books);
+  renderNudge();
+}
 
-  // Kick off background series checks for owned books we haven't checked yet.
-  books.forEach((b) => {
+// Cards are appended in chunks as you scroll, so a huge library opens as
+// fast as a small one — and only rendered books trigger series lookups.
+const CHUNK = 60;
+let renderQueue = [];
+let renderShowNames = false;
+const flippedIds = new Set();
+
+function renderChunk() {
+  const next = renderQueue.splice(0, CHUNK);
+  if (!next.length) return;
+  bookList.insertAdjacentHTML(
+    "beforeend",
+    next.map((b) => (viewMode === "grid" ? gridCard(b, renderShowNames) : listCard(b, renderShowNames))).join("")
+  );
+  next.forEach((b) => {
+    if (flippedIds.has(b.id)) {
+      bookList.querySelector(`[data-id="${CSS.escape(b.id)}"] .flip`)?.classList.add("flipped");
+    }
     if (!seriesCache.has(b.id)) checkSeriesInBackground(b);
   });
+}
+
+new IntersectionObserver((entries) => {
+  if (entries.some((e) => e.isIntersecting)) renderChunk();
+}, { rootMargin: "600px" }).observe($("#list-sentinel"));
+
+// Render forward until a given index exists, for A–Z jumps.
+function ensureRendered(index) {
+  while (bookList.children.length <= index && renderQueue.length) renderChunk();
+  return bookList.children[index];
+}
+
+// ---- A–Z rail: iOS-contacts-style jump, shown when it actually helps ----
+function initialOf(b) {
+  const source = shelfSort === "author" ? (b.authors ?? [])[0] ?? b.title : b.title;
+  const ch = String(source).replace(/^(the|a|an)\s+/i, "").trim()[0]?.toUpperCase() ?? "#";
+  return /[A-Z]/.test(ch) ? ch : "#";
+}
+
+function renderAzRail(books) {
+  const rail = $("#az-rail");
+  const useful = ["title", "author"].includes(shelfSort) && books.length >= 25;
+  rail.classList.toggle("hidden", !useful);
+  if (!useful) return;
+
+  const firstIndex = new Map();
+  books.forEach((b, i) => {
+    const k = initialOf(b);
+    if (!firstIndex.has(k)) firstIndex.set(k, i);
+  });
+  rail.innerHTML = [...firstIndex.keys()]
+    .map((k) => `<button data-jump="${esc(k)}">${esc(k)}</button>`)
+    .join("");
+  rail.querySelectorAll("[data-jump]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const el = ensureRendered(firstIndex.get(btn.dataset.jump));
+      el?.scrollIntoView({ block: "start", behavior: "smooth" });
+      navigator.vibrate?.(8);
+    })
+  );
 }
 
 function missingInSeries(b) {
@@ -272,9 +453,33 @@ function missingInSeries(b) {
 function gridCard(b, showNames) {
   const rating = myRating(b);
   const missing = missingInSeries(b);
+  // Front: the cover. Tap flips to your own take on the book — rating and
+  // the actions you reach for most — without leaving the shelf.
   return `
     <article class="grid-book" data-id="${esc(b.id)}" title="${esc(b.title)}">
-      ${coverHtml(b)}
+      <div class="flip">
+        <div class="flip-front">${coverHtml(b)}</div>
+        <div class="flip-back" aria-hidden="true">
+          <div class="qa-stars">
+            ${[1, 2, 3, 4, 5].map((n) =>
+              `<button class="${rating >= n ? "filled" : ""}" data-qa-rate="${n}"
+                       aria-label="Rate ${n}">${rating >= n ? "★" : "☆"}</button>`).join("")}
+          </div>
+          <div class="qa-row">
+            ${b.shelf === "tbr" || b.shelf === "owned"
+              ? `<button class="qa-btn ${b.reading ? "on" : ""}" data-qa-reading title="Currently reading">📖</button>`
+              : ""}
+            ${b.shelf !== "completed"
+              ? `<button class="qa-btn" data-qa-move="completed" title="Move to Finished">✅</button>` : ""}
+            ${b.shelf !== "tbr"
+              ? `<button class="qa-btn" data-qa-move="tbr" title="Move to To Read">🔖</button>` : ""}
+            ${b.shelf !== "wishlist"
+              ? `<button class="qa-btn" data-qa-move="wishlist" title="Move to Wishlist">🎁</button>` : ""}
+          </div>
+          <button class="qa-details" data-qa-details>Full details</button>
+          <p class="qa-hint">tap cover to flip back</p>
+        </div>
+      </div>
       <div>
         <p class="grid-title">${esc(b.title)}</p>
         <p class="grid-author">${esc((b.authors ?? []).join(", "))}</p>
@@ -337,7 +542,8 @@ async function checkSeriesInBackground(book) {
   try {
     const series = await api.detectSeries(book);
     if (!series) {
-      seriesCache.set(book.id, { series: null, books: [], missingCount: 0 });
+      seriesCache.set(book.id, { series: null, books: [], missingCount: 0, checkedAt: Date.now() });
+      persistSeriesCache();
       return;
     }
     if (!book.series?.name) db.updateBook(book.id, { series });
@@ -351,7 +557,9 @@ async function checkSeriesInBackground(book) {
       series,
       books: entries,
       missingCount: entries.length ? missing.length : 0,
+      checkedAt: Date.now(),
     });
+    persistSeriesCache();
     renderShelf();
   } catch {
     seriesCache.delete(book.id);
@@ -371,15 +579,18 @@ document.querySelectorAll(".tab").forEach((tab) => {
       t.setAttribute("aria-selected", t === tab);
     });
     currentShelf = tab.dataset.shelf;
+    flippedIds.clear();
     renderShelf();
   });
 });
 
 // ---------- search & member filter ----------
 
+let searchTimer = null;
 $("#list-search").addEventListener("input", (e) => {
   searchQuery = e.target.value;
-  renderShelf();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderShelf, 120); // keep typing smooth on big shelves
 });
 
 // ---------- view mode ----------
@@ -760,6 +971,7 @@ async function handleFoundIsbn(isbn) {
       scanStatus.textContent = `“${book.title}” is already in your library.`;
       return;
     }
+    navigator.vibrate?.(30); // a small buzz: the barcode locked on
     queueBookForConfirm(book);
   } catch (err) {
     scanStatus.textContent = "Lookup failed: " + err.message;
@@ -904,7 +1116,16 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     }
     seriesCache.delete(book.id);
     renderShelf();
+    navigator.vibrate?.(15);
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
+    toast(`Added to ${SHELF_LABEL[shelf]}`, {
+      actionLabel: "Undo",
+      onAction: () => {
+        db.removeBook(book.id);
+        renderShelf();
+        toast("Removed again");
+      },
+    });
     showNextPendingBook();
   })
 );
@@ -921,7 +1142,56 @@ confirmModal.addEventListener("close", () => {
 
 bookList.addEventListener("click", (e) => {
   const card = e.target.closest("[data-id]");
-  if (card) openDetail(card.dataset.id);
+  if (!card) return;
+  const id = card.dataset.id;
+  const b = db.getBook(id);
+  if (!b) return;
+
+  // List view keeps the straightforward tap-to-open behaviour.
+  const flip = card.querySelector(".flip");
+  if (!flip) return openDetail(id);
+
+  const rate = e.target.closest("[data-qa-rate]");
+  if (rate) {
+    const me = currentProfile() ?? "Me";
+    const value = Number(rate.dataset.qaRate);
+    undoable(`Rated ${"★".repeat(value)}`, b, () => {
+      db.updateBook(id, { ratings: { ...(b.ratings ?? {}), [me]: value }, rating: null });
+      shareToCommunity(id);
+    });
+    flippedIds.delete(id);
+    renderShelf();
+    return;
+  }
+  if (e.target.closest("[data-qa-reading]")) {
+    undoable(b.reading ? "No longer reading" : "Started reading", b, () =>
+      db.updateBook(id, { reading: !b.reading })
+    );
+    flippedIds.delete(id);
+    renderShelf();
+    return;
+  }
+  const move = e.target.closest("[data-qa-move]");
+  if (move) {
+    const to = move.dataset.qaMove;
+    undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
+      const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
+      db.updateBook(id, { shelf: to, owned, reading: to === "completed" ? false : b.reading ?? false });
+    });
+    flippedIds.delete(id);
+    renderShelf();
+    return;
+  }
+  if (e.target.closest("[data-qa-details]")) {
+    flip.classList.remove("flipped");
+    flippedIds.delete(id);
+    return openDetail(id);
+  }
+
+  const nowFlipped = flip.classList.toggle("flipped");
+  if (nowFlipped) flippedIds.add(id);
+  else flippedIds.delete(id);
+  navigator.vibrate?.(8);
 });
 
 async function openDetail(id) {
@@ -944,17 +1214,26 @@ async function openDetail(id) {
     ["Shelf", SHELF_LABEL[b.shelf] + (b.owned && b.shelf !== "owned" ? " (owned copy)" : "")],
   ].filter(([, v]) => v);
 
+  const heroMeta = [
+    (b.authors ?? []).join(", "),
+    [b.publishDate, b.pageCount ? `${b.pageCount} pages` : null].filter(Boolean).join(" · "),
+    b.series?.name ? `${b.series.name}${b.series.position ? ` #${b.series.position}` : ""}` : null,
+  ].filter(Boolean);
+
   $("#detail-content").innerHTML = `
-    <div class="confirm-book">
+    <div class="book-hero">
       ${coverHtml(b)}
-      <div>
+      <div class="hero-info">
         <h3>${esc(b.title)}</h3>
         ${b.subtitle ? `<p class="subtitle">${esc(b.subtitle)}</p>` : ""}
-        <table class="detail-table">
-          ${rows.map(([k, v]) => `<tr><th>${k}</th><td>${esc(String(v))}</td></tr>`).join("")}
-        </table>
+        <p class="hero-meta">${heroMeta.map(esc).join("<br />")}</p>
+        <div class="badges">
+          <span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>
+          ${b.reading ? `<span class="badge reading-badge">📖 Reading now</span>` : ""}
+        </div>
       </div>
     </div>
+    <details class="d-section" open><summary>My take</summary><div class="d-body">
     ${(() => {
       // Ownership is always editable for To Read / Finished; the medium
       // chips appear only when copy-type tracking is enabled.
@@ -1036,15 +1315,23 @@ async function openDetail(id) {
         .join("")}
       <p class="community-line" id="community-line"></p>
     </div>
-    <div class="find-section">
-      <h3>Find this book</h3>
+    </div></details>
+
+    <details class="d-section"><summary>Book details</summary><div class="d-body">
+      <table class="detail-table">
+        ${rows.map(([k, v]) => `<tr><th>${k}</th><td>${esc(String(v))}</td></tr>`).join("")}
+      </table>
+    </div></details>
+
+    <details class="d-section"><summary>Find a copy</summary><div class="d-body">
       <div class="store-links">
         ${storeLinks(b)
           .map(([label, url]) =>
             `<a class="store-link" href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`)
           .join("")}
       </div>
-    </div>
+    </div></details>
+
     <div class="detail-actions">
       ${SHELVES
         .filter((s) => s !== b.shelf)
@@ -1052,10 +1339,13 @@ async function openDetail(id) {
         .join("")}
       <button class="danger-btn" data-delete>Remove</button>
     </div>
-    <div id="series-section" class="series-section">
-      <h3>Series</h3>
-      <p class="series-loading">Checking series info…</p>
-    </div>`;
+    <details class="d-section" ${b.series?.name ? "open" : ""}><summary>Series</summary>
+      <div class="d-body">
+        <div id="series-section" class="series-section">
+          <p class="series-loading">Checking series info…</p>
+        </div>
+      </div>
+    </details>`;
   detailModal.showModal();
 
   $("#detail-content").querySelectorAll("[data-move]").forEach((btn) =>
@@ -1065,7 +1355,9 @@ async function openDetail(id) {
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
       // Finishing a book (or shelving it away) ends the current read.
       const reading = to === "tbr" || to === "owned" ? b.reading ?? false : false;
-      db.updateBook(id, { shelf: to, owned, reading });
+      undoable(`Moved to ${SHELF_LABEL[to]}`, b, () =>
+        db.updateBook(id, { shelf: to, owned, reading })
+      );
       detailModal.close();
       renderShelf();
     })
@@ -1147,12 +1439,19 @@ async function openDetail(id) {
     openDetail(id);
   });
   $("#detail-content").querySelector("[data-delete]").addEventListener("click", () => {
-    if (confirm(`Remove “${b.title}” from your library?`)) {
-      db.removeBook(id);
-      seriesCache.delete(id);
-      detailModal.close();
-      renderShelf();
-    }
+    const snapshot = JSON.parse(JSON.stringify(b));
+    db.removeBook(id);
+    seriesCache.delete(id);
+    detailModal.close();
+    renderShelf();
+    toast(`Removed “${b.title}”`, {
+      actionLabel: "Undo",
+      onAction: () => {
+        db.replaceBook(snapshot);
+        renderShelf();
+        toast("Restored");
+      },
+    });
   });
 
   renderSeriesSection(b);
@@ -1185,7 +1484,8 @@ async function renderSeriesSection(book) {
       } else {
         cached = { series: null, books: [] };
       }
-      seriesCache.set(book.id, { ...cached, missingCount: 0 });
+      seriesCache.set(book.id, { ...cached, missingCount: 0, checkedAt: Date.now() });
+      persistSeriesCache();
     } catch {
       cached = null;
     }
@@ -1218,7 +1518,8 @@ async function renderSeriesSection(book) {
       </li>`;
   });
   const missingCount = cached.books.filter((e) => !ownedTitles.has(normTitle(e.title))).length;
-  seriesCache.set(book.id, { ...cached, missingCount });
+  seriesCache.set(book.id, { ...cached, missingCount, checkedAt: cached.checkedAt ?? Date.now() });
+  persistSeriesCache();
 
   el.innerHTML = `
     <h3>Series: ${esc(cached.series.name)}</h3>
@@ -1888,9 +2189,9 @@ $("#import-input").addEventListener("change", async (e) => {
     db.importJson(await file.text());
     seriesCache.clear();
     renderShelf();
-    alert("Library restored.");
+    toast("Library restored");
   } catch (err) {
-    alert("Import failed: " + err.message);
+    toast("Import failed: " + err.message);
   }
 });
 
@@ -2002,7 +2303,14 @@ function wireMemberButtons(el) {
   );
 }
 
+let lastRemoteHash = null;
+
 function onRemoteBooks(books) {
+  const hash = JSON.stringify(
+    [...books].sort((a, b) => String(a.id).localeCompare(String(b.id)))
+  );
+  if (hash === lastRemoteHash) return; // nothing actually changed
+  lastRemoteHash = hash;
   db.applyRemote(books);
   renderShelf();
 }
@@ -2332,6 +2640,9 @@ async function backfillSubjects() {
 }
 
 // ---------- init ----------
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
 requestPersistence();
 themes.apply();
 themes.watchSystem(() => {
@@ -2344,3 +2655,10 @@ initSync();
 backfillSubjects();
 history.replaceState({ screen: "shelves" }, "");
 if (!currentProfile()) showScreen("profile");
+
+// Home-screen shortcut: long-press the app icon -> "Scan a book".
+if (new URLSearchParams(location.search).get("action") === "scan") {
+  history.replaceState({ screen: "shelves" }, "", "./");
+  addModal.showModal();
+  $("#method-camera").click();
+}

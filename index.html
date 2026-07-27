@@ -72,6 +72,7 @@
       👤 Who's using this phone? <span class="banner-action">Choose a profile</span>
     </button>
     <button id="request-banner" class="profile-banner request hidden"></button>
+    <div id="nudge-card" class="nudge hidden"></div>
     <div class="toolbar">
       <div class="search-row">
         <label class="search-wrap">
@@ -90,7 +91,11 @@
       <p id="shelf-summary" class="shelf-summary"></p>
     </div>
 
-    <section id="book-list" class="book-list grid" aria-live="polite"></section>
+    <div class="list-wrap">
+      <section id="book-list" class="book-list grid" aria-live="polite"></section>
+      <nav id="az-rail" class="az-rail hidden" aria-label="Jump to letter"></nav>
+    </div>
+    <div id="list-sentinel" aria-hidden="true"></div>
 
     <div id="empty-state" class="empty-state hidden">
       <span class="empty-art" aria-hidden="true">📚</span>
@@ -237,7 +242,7 @@
   </dialog>
 
   <!-- ============ Book detail modal ============ -->
-  <dialog id="detail-modal" class="modal">
+  <dialog id="detail-modal" class="modal sheet">
     <div class="modal-header">
       <h2>Book Details</h2>
       <button class="close-btn" data-close="detail-modal" aria-label="Close">✕</button>
@@ -249,6 +254,8 @@
 
 
 
+
+  <div id="toast-region" aria-live="polite"></div>
 
   <script type="module" src="js/app.js"></script>
 </body>

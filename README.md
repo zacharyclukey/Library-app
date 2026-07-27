@@ -80,6 +80,19 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Two ways to browse** — a cover-forward shelf grid where each row of books sits
   on a wooden ledge (with spine-styled fallback covers for books with no jacket
   art), or a detailed list, plus a bottom navigation bar.
+- **Tap a cover to flip it** 🔄 — the back of each card is your own take: rate it,
+  mark it as currently reading, move shelves, or open the full book sheet. Every
+  action shows a toast with **Undo**, so nothing needs a confirmation popup.
+- **Built for big shelves** 📚 — cards render in chunks as you scroll (a
+  300-book shelf paints as fast as a small one), an A–Z rail jumps you through
+  the list when sorted by title or author, and search is debounced.
+- **Never homework** 🌿 — there is deliberately no "N books need rating" counter.
+  At most one finished-but-unrated book is offered at a time, rateable in a
+  single tap and easy to wave off (which stays quiet for days).
+- **Works offline** ✈️ — a service worker caches the app shell and covers, so it
+  opens instantly with no connection; series lookups are cached for a week
+  instead of re-fetched every session. Add it to your home screen and long-press
+  the icon for a "Scan a book" shortcut.
 - **Aesthetics** 🕯️ — pick the mood in Settings: **Reading Room** (walnut,
   parchment, brass lamplight — the default), **Cottage Garden**, **Dark
   Academia**, or **Modern**, each with light/dark/auto brightness. Themes carry
