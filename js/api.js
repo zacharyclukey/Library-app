@@ -214,15 +214,52 @@ const GENERIC_SUBJECTS =
   /^fiction$|^literature$|accessible|protected daisy|in library|overdrive|large type|reading level|bestseller|translations|collections|open library|staff picks|^nyt:|^award:|textbooks/i;
 
 // Subjects tagged on a work, filtered down to ones that say something
-// about taste (drops catalog noise like "Accessible book").
+// about taste (drops catalog noise like "Accessible book"). Cached in
+// localStorage for a month: recommendations compare subjects across many
+// candidate books, which would otherwise mean a request per book, per run.
+const SUBJ_CACHE_KEY = "shelfie.subjectCache.v1";
+const SUBJ_TTL_MS = 30 * 24 * 3600 * 1000;
+let subjCache = null;
+
+function loadSubjCache() {
+  if (subjCache) return subjCache;
+  try {
+    const raw = JSON.parse(localStorage.getItem(SUBJ_CACHE_KEY)) ?? {};
+    const now = Date.now();
+    subjCache = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (now - (v.at ?? 0) < SUBJ_TTL_MS) subjCache[k] = v;
+    }
+  } catch {
+    subjCache = {};
+  }
+  return subjCache;
+}
+
+let subjSaveTimer = null;
+function saveSubjCache() {
+  clearTimeout(subjSaveTimer);
+  subjSaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(SUBJ_CACHE_KEY, JSON.stringify(subjCache));
+    } catch { /* full — stays in memory */ }
+  }, 500);
+}
+
 export async function fetchWorkSubjects(workKey) {
+  if (!workKey) return [];
+  const cache = loadSubjCache();
+  if (cache[workKey]) return cache[workKey].s;
   try {
     const res = await fetch(`${OL}${workKey}.json`);
     if (!res.ok) return [];
     const work = await res.json();
-    return (work.subjects ?? [])
+    const subjects = (work.subjects ?? [])
       .filter((s) => typeof s === "string" && s.length < 40 && !GENERIC_SUBJECTS.test(s))
       .slice(0, 12);
+    cache[workKey] = { s: subjects, at: Date.now() };
+    saveSubjCache();
+    return subjects;
   } catch {
     return [];
   }

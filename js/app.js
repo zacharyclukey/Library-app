@@ -328,7 +328,12 @@ document.querySelectorAll("[data-back]").forEach((btn) =>
 // unless sharing is enabled in Settings).
 function shareToCommunity(id) {
   const b = db.getBook(id);
-  if (b) community.publish(b, currentProfile() ?? "Someone");
+  if (!b) return;
+  const me = currentProfile() ?? "Someone";
+  community.publish(b, me);
+  // Keep this reader's shelf fingerprint current so "readers like you"
+  // recommendations have something to work with (debounced inside).
+  community.publishShelf(db.getAllBooks().map((x) => community.bookKey(x)), me);
 }
 
 // ---------- rendering ----------
@@ -1757,31 +1762,76 @@ async function buildRecommendations(books, f) {
     })
   );
 
-  // Score: community rating (neutral default when unrated), a nudge for how
-  // widely read and reprinted it is, and a bonus for showing up in more than
-  // one of your taste queries.
-  const scored = [...found.values()].map((r) => ({
-    ...r,
-    score:
-      (r.avgRating ?? 3.6) +
-      Math.min(r.ratingsCount ?? 0, 400) / 800 +
-      Math.min(r.editions ?? 0, 40) / 200 +
-      (r.hits - 1) * 0.35,
-  }));
+  // ---- Scoring ----------------------------------------------------------
+  // Style first. Reader ratings used to be the base term, which meant a
+  // popular book could outrank one that genuinely matched your taste; they
+  // are now a modest, confidence-weighted tiebreaker instead.
+  //
+  //   similarity  (0..1, dominant) — how much a book overlaps your taste:
+  //                 shared subjects, author affinity, and how many separate
+  //                 taste queries surfaced it
+  //   coRead      (0..1, additive)  — readers whose shelves resemble yours
+  //                 have this book (needs other users; zero until then)
+  //   quality     (small)           — ratings, scaled by how many people
+  //                 rated it, so a 4.6 from 9 readers doesn't beat a match
+  const candidates = [...found.values()];
 
-  // Blend in the app's own community: books our users rated well outrank
-  // the free-database baseline. (Sparse today; grows with every user.)
-  const summaries = await community.fetchSummaries(
-    scored.map((r) => community.bookKey({ workKey: r.workKey, title: r.title, authors: r.authors }))
+  // Fetch real subjects for the strongest candidates so overlap is measured,
+  // not assumed. Cached in api.js, so this is cheap after the first run.
+  const preRanked = candidates
+    .sort((a, b) => b.hits - a.hits || (b.avgRating ?? 0) - (a.avgRating ?? 0))
+    .slice(0, 30);
+  await Promise.allSettled(
+    preRanked.map(async (r) => {
+      r.subjects = await api.fetchWorkSubjects(r.workKey);
+    })
   );
-  for (const r of scored) {
-    const cs = summaries.get(community.bookKey({ workKey: r.workKey, title: r.title, authors: r.authors }));
-    if (cs?.ratingCount) {
-      r.score += (cs.ratingAvg - 3) * 0.5 + Math.min(cs.ratingCount, 20) / 20;
+
+  const tasteTotal = Object.values(subjectScore).reduce((a, b) => a + b, 0) || 1;
+  const authorTotal = Object.values(authorScore).reduce((a, b) => a + b, 0) || 1;
+
+  const myKeys = books.map((b) => community.bookKey(b));
+  const [summaries, coRead] = await Promise.all([
+    community.fetchSummaries(candidates.map((r) => community.bookKey(r))),
+    community.coReadScores(myKeys),
+  ]);
+
+  for (const r of candidates) {
+    // Subject overlap, weighted by how central each subject is to your taste.
+    const subjHit = (r.subjects ?? []).reduce((sum, s) => sum + (subjectScore[s] ?? 0), 0);
+    const subjectMatch = Math.min(subjHit / tasteTotal, 1);
+
+    const authorHit = (r.authors ?? []).reduce((sum, a) => sum + (authorScore[a] ?? 0), 0);
+    const authorMatch = Math.min(authorHit / authorTotal, 1);
+
+    const corroboration = Math.min((r.hits - 1) / 2, 1);
+
+    const similarity = 0.5 * subjectMatch + 0.3 * authorMatch + 0.2 * corroboration;
+
+    // Ratings only speak up when enough people have spoken.
+    const confidence = Math.min((r.ratingsCount ?? 0) / 60, 1);
+    const quality = r.avgRating ? ((r.avgRating - 3.4) / 1.6) * confidence : 0;
+
+    const key = community.bookKey(r);
+    const cr = coRead.get(key);
+    const cs = summaries.get(key);
+    const communityRating = cs?.ratingCount
+      ? ((cs.ratingAvg - 3) / 2) * Math.min(cs.ratingCount / 5, 1)
+      : 0;
+
+    r.score = similarity + 0.6 * (cr?.score ?? 0) + 0.25 * quality + 0.3 * communityRating;
+
+    // Say why, most specific signal first.
+    if (cr?.readers) {
+      r.reason = `Readers with shelves like yours have this`;
+    } else if (cs?.ratingCount) {
       r.reason = `Shelfie readers rate it ★ ${cs.ratingAvg.toFixed(1)}`;
+    } else if (subjectMatch > 0.12 && r.subjects?.length) {
+      const shared = r.subjects.filter((x) => subjectScore[x]).slice(0, 2);
+      if (shared.length) r.reason = `Matches your taste: ${shared.join(", ")}`;
     }
   }
-  scored.sort((a, b) => b.score - a.score);
+  const scored = candidates.sort((a, b) => b.score - a.score);
 
   // Keep the list varied: at most two books per author.
   const perAuthor = {};

@@ -67,9 +67,13 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   subject tags), length (a dual-thumb page-count slider), series vs standalone,
   publication age, format, and rating status; sort by date added, title, author,
   publish year, length, or your rating.
-- **Discover** ✨ — free recommendations built from your shelves: favorite
-  authors and recurring genres are mined from your library, then matched against
-  well-rated Open Library books you don't own, with one-tap wishlisting.
+- **Discover** ✨ — free recommendations built from your shelves, scored on
+  **style first**: how much a book's subjects overlap your taste, author
+  affinity, and corroboration across several taste signals. Reader ratings are a
+  confidence-weighted tiebreaker (a 4.6 from nine readers won't outrank a real
+  match), and each card says *why* it's there. One-tap wishlisting. As the
+  community grows, books held by readers whose shelves resemble yours get a
+  boost too — see `coReadScores` in `js/community.js`.
   Discover takes the same genre, page-range, and age filters — when set, your
   shelf books matching them drive the taste profile (with the rest of the
   library as context) and results are constrained to match.
