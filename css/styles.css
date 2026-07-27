@@ -1722,6 +1722,53 @@ img.cover.missing { display: none; }
 .series-section h3 { margin: 0 0 0.45rem; font-family: var(--serif); font-size: 1rem; }
 .series-loading { color: var(--muted); font-size: 0.85rem; }
 .series-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.4rem; }
+
+/* Say-it-yourself series, for the books no free database has indexed. */
+.series-editor { margin-top: 0.8rem; }
+.series-editor > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--accent);
+  font-weight: 600;
+  list-style: none;
+}
+.series-editor > summary::-webkit-details-marker { display: none; }
+.series-editor > summary::before { content: "✎ "; }
+.series-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-top: 0.6rem;
+}
+.series-form label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.series-form input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.series-form .series-num input { width: 4.5rem; }
+.series-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 .series-list li {
   display: flex;
   align-items: center;

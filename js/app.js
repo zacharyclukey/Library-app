@@ -577,19 +577,41 @@ function renderHero() {
 // Collect books under their series, standalones last, so a shelf can be
 // read as collections rather than a flat wall of covers. Returns a render
 // list where header entries sit inline with the books they introduce.
+// Series names reach us from several sources and rarely agree on spelling:
+// "L.O.R.D.S." and "LORDS", "The Stormlight Archive" and "Stormlight
+// Archive". Books get grouped on this flattened key so one series stays one
+// shelf heading, while the heading itself shows the fullest spelling seen.
+function seriesGroupKey(name) {
+  return String(name ?? "")
+    .toLowerCase()
+    .replace(/^(?:the|a|an)\s+/, "")
+    .replace(/\s*(?:series|saga|trilogy|duet|cycle|novels?|books?)\s*$/, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
 function groupIntoSeries(books) {
   const groups = new Map();
   const loose = [];
   for (const b of books) {
     if (b.series?.name) {
-      if (!groups.has(b.series.name)) groups.set(b.series.name, []);
-      groups.get(b.series.name).push(b);
+      const key = seriesGroupKey(b.series.name);
+      if (!key) { loose.push(b); continue; }
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(b);
     } else {
       loose.push(b);
     }
   }
+  // Prefer the spelling used by the most books; ties go to the longer one,
+  // which keeps "L.O.R.D.S." over a stray "LORDS".
+  const displayName = (list) => {
+    const tally = new Map();
+    list.forEach((b) => tally.set(b.series.name, (tally.get(b.series.name) ?? 0) + 1));
+    return [...tally.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0][0];
+  };
   const out = [];
-  [...groups.entries()]
+  [...groups.values()]
+    .map((list) => [displayName(list), list])
     .sort((a, b) => a[0].localeCompare(b[0]))
     .forEach(([name, list]) => {
       list.sort(
@@ -797,6 +819,12 @@ function listCard(b, showNames) {
 }
 
 async function checkSeriesInBackground(book) {
+  // "Not in a series" is an answer, not a gap — don't keep re-asking.
+  if (book.seriesManual && !book.series?.name) {
+    seriesCache.set(book.id, { series: null, books: [], missingCount: 0, checkedAt: Date.now() });
+    persistSeriesCache();
+    return;
+  }
   seriesCache.set(book.id, null); // mark in-flight
   try {
     const series = await api.detectSeries(book);
@@ -805,7 +833,7 @@ async function checkSeriesInBackground(book) {
       persistSeriesCache();
       return;
     }
-    if (!book.series?.name) db.updateBook(book.id, { series });
+    if (!book.series?.name && !book.seriesManual) db.updateBook(book.id, { series });
 
     const entries = await api.listSeriesBooks(series.name, book.authors);
     const ownedTitles = new Set(
@@ -1919,16 +1947,81 @@ async function renderCommunityLine(b) {
   el.textContent = "Shelfie readers: " + bits.join(" · ");
 }
 
+// No free database knows every series — indie and self-published books are
+// routinely missing one, and no amount of guessing fixes that. So you can
+// always say what the series is yourself; what you set wins over detection,
+// syncs to the rest of the household, and groups the shelf immediately.
+function seriesEditor(book) {
+  const current = book.series ?? {};
+  const names = [...new Set(
+    db.getAllBooks().map((b) => b.series?.name).filter(Boolean)
+  )].sort();
+  return `
+    <details class="series-editor">
+      <summary>${current.name ? "Change the series" : "Set the series yourself"}</summary>
+      <div class="series-form">
+        <label>Series
+          <input type="text" id="series-name-input" list="known-series"
+                 placeholder="e.g. L.O.R.D.S." value="${esc(current.name ?? "")}" />
+        </label>
+        <datalist id="known-series">
+          ${names.map((n) => `<option value="${esc(n)}"></option>`).join("")}
+        </datalist>
+        <label class="series-num">Book #
+          <input type="number" id="series-pos-input" min="1" max="999"
+                 placeholder="—" value="${current.position ?? ""}" />
+        </label>
+        <div class="series-form-actions">
+          <button class="primary-btn" id="series-save-btn">Save</button>
+          ${current.name ? `<button class="link-btn" id="series-clear-btn">Not in a series</button>` : ""}
+        </div>
+      </div>
+    </details>`;
+}
+
+function wireSeriesEditor(book, el) {
+  el.querySelector("#series-save-btn")?.addEventListener("click", () => {
+    // "L.O.R.D.S. Series" and "L.O.R.D.S." are the same shelf heading; tidy
+    // the wording on the way in so the saved name reads as the series' name.
+    const name = el.querySelector("#series-name-input").value
+      .trim()
+      .replace(/\s*(?:series|saga)\s*$/i, "")
+      .trim();
+    const posRaw = el.querySelector("#series-pos-input").value.trim();
+    const position = posRaw === "" ? null : Number(posRaw);
+    if (!name) return toast("Give the series a name first");
+    // seriesManual stops the background lookup from overwriting this later.
+    db.updateBook(book.id, {
+      series: { name, position: Number.isFinite(position) ? position : null },
+      seriesManual: true,
+    });
+    seriesCache.delete(book.id);
+    toast(`Filed under “${name}”`);
+    renderShelf();
+    openDetail(book.id);
+  });
+  el.querySelector("#series-clear-btn")?.addEventListener("click", () => {
+    db.updateBook(book.id, { series: null, seriesManual: true });
+    seriesCache.delete(book.id);
+    toast("Marked as a standalone");
+    renderShelf();
+    openDetail(book.id);
+  });
+}
+
 async function renderSeriesSection(book) {
   const section = () => detailModal.querySelector("#series-section");
   let cached = seriesCache.get(book.id);
+  if (!cached && book.seriesManual && !book.series?.name) {
+    cached = { series: null, books: [] }; // you already said it's a standalone
+  }
   if (!cached) {
     try {
       const series = await api.detectSeries(book);
       if (series) {
         const entries = await api.listSeriesBooks(series.name, book.authors);
         cached = { series, books: entries };
-        if (!book.series?.name) db.updateBook(book.id, { series });
+        if (!book.series?.name && !book.seriesManual) db.updateBook(book.id, { series });
       } else {
         cached = { series: null, books: [] };
       }
@@ -1942,7 +2035,11 @@ async function renderSeriesSection(book) {
   if (!el) return; // modal closed meanwhile
 
   if (!cached || !cached.series) {
-    el.innerHTML = `<h3>Series</h3><p class="muted">No series found — this looks like a standalone book.</p>`;
+    // No <h3> here — the section this sits in is already titled "Series".
+    el.innerHTML = `<p class="muted">No series found for this one. If you know it's
+      part of a series, tell it below and the shelf will group it.</p>
+      ${seriesEditor(book)}`;
+    wireSeriesEditor(book, el);
     return;
   }
 
@@ -1979,7 +2076,9 @@ async function renderSeriesSection(book) {
               : `You own all ${cached.books.length} books we found in this series. 🎉`
           }</p><ul class="series-list">${items.join("")}</ul>`
         : `<p class="muted">This book is part of “${esc(cached.series.name)}”, but we couldn't list the other entries.</p>`
-    }`;
+    }
+    ${seriesEditor(book)}`;
+  wireSeriesEditor(book, el);
 
   el.querySelectorAll("[data-wish-idx]").forEach((btn) =>
     btn.addEventListener("click", () => {

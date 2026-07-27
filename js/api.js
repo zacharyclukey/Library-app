@@ -367,23 +367,70 @@ export async function detectSeries(book) {
     } catch { /* best effort */ }
   }
 
-  // Google Books: many volumes encode series in the title, e.g.
-  // "Catching Fire (The Hunger Games, Book 2)".
+  // Google Books: many volumes encode the series in the title or subtitle.
+  // Indie and self-published books — where Open Library usually has nothing —
+  // are often the ones that do, since they carry their storefront titles.
   try {
     const q = book.isbn13 ? `isbn:${book.isbn13}` : `intitle:"${book.title}"`;
     const res = await fetch(`${GBOOKS}/volumes?q=${encodeURIComponent(q)}&country=US`);
     if (res.ok) {
       const data = await res.json();
-      for (const item of (data.items ?? []).slice(0, 5)) {
-        const t = item.volumeInfo?.title ?? "";
-        const sub = item.volumeInfo?.subtitle ?? "";
-        const m = (t + " " + sub).match(/\(([^)]+?)(?:,?\s*(?:Book|Bk\.?|#|Volume|Vol\.?)\s*(\d+))\)/i);
-        if (m) return { name: m[1].trim(), position: Number(m[2]) };
+      for (const item of (data.items ?? []).slice(0, 10)) {
+        const info = item.volumeInfo ?? {};
+        const s = parseSeriesFromText(`${info.title ?? ""} ${info.subtitle ?? ""}`);
+        if (s) return s;
       }
     }
   } catch { /* best effort */ }
 
   return null;
+}
+
+// Pull a series out of a title/subtitle. Deliberately demands a book number
+// somewhere: parentheses in book titles are far more often "(A Novel)" or
+// "(A Dark Romance)" than a series, and a wrong series is worse than none —
+// it would file the book under a heading that doesn't exist.
+const NUM_WORDS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+const COUNTER = String.raw`(?:Book|Bk\.?|Volume|Vol\.?|Part|#)`;
+const NUMBER = String.raw`(\d+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)`;
+
+export function parseSeriesFromText(text) {
+  const patterns = [
+    // "(The Hunger Games, Book 2)" · "(L.O.R.D.S. Book 1)" · "(Crave #3)"
+    new RegExp(String.raw`\(([^)]+?)[,:]?\s*${COUNTER}\s*${NUMBER}\s*\)`, "i"),
+    // "(Book 2 of The Hunger Games)" · "(Book 1 in the L.O.R.D.S. Series)"
+    new RegExp(String.raw`\(\s*${COUNTER}\s*${NUMBER}\s*(?:of|in)\s+(?:the\s+)?([^)]+?)\s*\)`, "i"),
+    // Same again outside brackets: "…: The Hunger Games, Book 2"
+    new RegExp(String.raw`(?:^|[:–—-])\s*([^:–—()]+?)[,:]?\s*${COUNTER}\s*${NUMBER}\s*$`, "i"),
+  ];
+  for (const [i, re] of patterns.entries()) {
+    const m = text.match(re);
+    if (!m) continue;
+    // The middle pattern captures the number first, the others the name.
+    const [rawName, rawNum] = i === 1 ? [m[2], m[1]] : [m[1], m[2]];
+    const name = cleanSeriesName(rawName);
+    if (!name) continue;
+    const n = /^\d+$/.test(rawNum) ? Number(rawNum) : NUM_WORDS[rawNum.toLowerCase()];
+    return { name, position: Number.isFinite(n) ? n : null };
+  }
+  return null;
+}
+
+function cleanSeriesName(raw) {
+  // The leading article is kept — "The Stormlight Archive" is the series'
+  // real name. Matching across spellings is the grouper's job (seriesKey).
+  const name = String(raw ?? "")
+    .replace(/\s*(?:series|saga|trilogy|duet|cycle)\s*$/i, "")
+    .replace(/[\s,:;–—-]+$/, "")
+    .trim();
+  // Guard against catching a genre blurb ("A Dark College Romance") rather
+  // than a series name.
+  if (name.length < 2 || name.length > 60) return null;
+  if (/^(novel|a novel|unabridged|complete|boxed set|box set|omnibus)$/i.test(name)) return null;
+  return name;
 }
 
 // List the books in a named series, best-effort, ordered by first

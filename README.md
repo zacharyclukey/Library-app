@@ -66,7 +66,10 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Sorting & filters** ⚙️ — the **Sort** button opens with the sort orders
   first: date added, title, author, publish year, length, your rating, or
   **📚 Series, grouped**, which stacks the shelf under series headings with
-  standalones last (remembered per device). Below that, filter any shelf by
+  standalones last (remembered per device). Series names are matched loosely,
+  so "L.O.R.D.S.", "LORDS" and "The L.O.R.D.S. Series" form one heading rather
+  than three, and the heading shows the fullest spelling. Below that, filter
+  any shelf by
   genre (derived from Open Library subject tags), length (a dual-thumb
   page-count slider), series vs standalone, publication age, format, and
   rating status.
@@ -84,6 +87,13 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked
   ✅ owned / ◻️ not owned.
+- **Say it yourself when the databases don't know** ✍️ — the free catalogues have
+  thin data on indie and self-published books, and no amount of guessing fixes a
+  series nobody indexed. Every book's detail view has a **Set the series
+  yourself** field (with a picker of series already in your library, so the rest
+  of the set is one tap each). What you set beats detection, never gets
+  overwritten, syncs to the household, and groups the shelf straight away.
+  "Not in a series" sticks too, instead of being re-guessed every launch.
 - **Two ways to browse** — a cover-forward shelf grid where each row of books sits
   on a wooden ledge (with spine-styled fallback covers for books with no jacket
   art), or a detailed list, plus a bottom navigation bar.
@@ -179,7 +189,7 @@ Pages, Netlify, or `npx serve` behind a tunnel) so the camera is allowed.
 | --- | --- |
 | Barcode reading | Native `BarcodeDetector` API (Chrome/Edge/Android); automatic fallback to the ZXing library (loaded on demand) on Safari/Firefox |
 | Book metadata | Open Library ISBN API (edition-specific), gaps filled from Google Books |
-| Series detection | Edition series tags → other editions of the same work → Google Books title heuristics; series roster from Open Library search |
+| Series detection | Your own manual tag (wins outright) → edition series tags → other editions of the same work → Google Books title/subtitle patterns ("(L.O.R.D.S. Book 1)", "(Book 2 of …)", "(… , #3)"); series roster from Open Library search |
 | Storage | `localStorage`, JSON export/import |
 
 Both APIs are free and keyless; series data is best-effort (coverage is strong for
