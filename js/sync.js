@@ -92,8 +92,18 @@ export async function firestore() {
 }
 
 function bookDoc(libId, id) {
-  // Firestore doc ids can't contain "/"; our ids ("isbn:...", "ol:...") don't.
-  return m.doc(fsdb, "households", libId, "books", id);
+  // Our own ids ("isbn:…", "ol:…", "manual:…") are always safe and must stay
+  // byte-identical — a library already in the cloud is addressed by them.
+  // Only the ids Firestore would reject (empty, containing "/", "." or "..",
+  // or the reserved "__…__" form) get encoded. The book keeps its real id in
+  // its own `id` field either way.
+  const raw = String(id ?? "");
+  const usable =
+    raw && raw !== "." && raw !== ".." && !raw.includes("/") && !/^__.*__$/.test(raw);
+  return m.doc(
+    fsdb, "households", libId, "books",
+    usable ? raw : "enc_" + encodeURIComponent(raw).replace(/\./g, "%2E")
+  );
 }
 
 export function normalizeLibraryName(name) {

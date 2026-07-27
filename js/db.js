@@ -26,16 +26,136 @@ import * as sync from "./sync.js";
 
 const STORAGE_KEY = "shelfie.library.v1";
 
+// ---------- shape guarantees ----------
+//
+// Records reach this store from four directions: our own writers, a JSON
+// import, another household member's phone, and whatever the Open Library or
+// Google Books shape happened to be the day a book was added. One record with
+// `authors` as a bare string used to throw mid-render and leave the whole
+// shelf blank, which reads to the user as "my books are gone". So nothing
+// leaves this module until it matches the documented schema — every consumer
+// can then treat the fields as trustworthy.
+
+const SHELVES = ["owned", "tbr", "completed", "wishlist"];
+const MEDIA = ["print", "ebook", "audio"];
+const CONTENT = ["kids", "teen", "general", "mature", "explicit"];
+
+// Only strings and numbers become text; an object would stringify to the
+// useless "[object Object]" and then show up as a book title or a series
+// heading, so it's treated as absent instead.
+const str = (v) =>
+  typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : null;
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const clamp = (v, lo, hi) => (num(v) == null ? null : Math.min(hi, Math.max(lo, Math.round(v))));
+const oneOf = (v, allowed) => (allowed.includes(v) ? v : null);
+
+function strList(v) {
+  if (Array.isArray(v)) return v.map(str).filter(Boolean);
+  const s = str(v);
+  return s ? [s] : [];
+}
+
+function ratingMap(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out = {};
+  for (const [who, r] of Object.entries(v)) {
+    const n = clamp(r, 1, 5);
+    if (n != null) out[who] = n;
+  }
+  return out;
+}
+
+function reviewMap(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out = {};
+  for (const [who, r] of Object.entries(v)) {
+    const text = str(r && typeof r === "object" ? r.text : r);
+    if (text) out[who] = { text, updatedAt: str(r?.updatedAt) ?? null };
+  }
+  return out;
+}
+
+function seriesOf(v) {
+  if (!v) return null;
+  const name = str(typeof v === "object" ? v.name : v);
+  if (!name) return null;
+  return { name, position: num(typeof v === "object" ? v.position : null) };
+}
+
+// The common case is a record we wrote ourselves, so check first and skip the
+// rebuild — this runs on every read of the library.
+function looksClean(b) {
+  return (
+    typeof b.id === "string" &&
+    typeof b.title === "string" &&
+    Array.isArray(b.authors) &&
+    SHELVES.includes(b.shelf) &&
+    (b.pageCount == null || typeof b.pageCount === "number") &&
+    (b.series == null || typeof b.series === "object")
+  );
+}
+
+function normalize(book, i) {
+  if (!book || typeof book !== "object" || Array.isArray(book)) return null;
+  if (looksClean(book)) return book;
+  // An unrecognised shelf falls back to Owned, so `owned` has to be derived
+  // from the shelf we settled on, not the one that came in.
+  const shelf = oneOf(book.shelf, SHELVES) ?? "owned";
+  return {
+    ...book,
+    id: str(book.id) || `repaired:${i}`,
+    title: str(book.title) || "Untitled",
+    subtitle: str(book.subtitle),
+    authors: strList(book.authors),
+    subjects: strList(book.subjects),
+    shelf,
+    owned: book.owned === true || shelf === "owned",
+    reading: book.reading === true,
+    medium: oneOf(book.medium, MEDIA),
+    content: oneOf(book.content, CONTENT),
+    spice: clamp(book.spice, 1, 5),
+    pageCount: num(book.pageCount),
+    series: seriesOf(book.series),
+    ratings: ratingMap(book.ratings),
+    reviews: reviewMap(book.reviews),
+    rating: clamp(book.rating, 1, 5),
+    profile: str(book.profile),
+  };
+}
+
+function repair(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  list.forEach((b, i) => {
+    const book = normalize(b, i);
+    // Two records under one id would fight over every edit; keep the first.
+    if (!book || seen.has(book.id)) return;
+    seen.add(book.id);
+    out.push(book);
+  });
+  return out;
+}
+
 function load() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? [];
+    return repair(JSON.parse(localStorage.getItem(STORAGE_KEY)));
   } catch {
     return [];
   }
 }
 
+// A full disk must never look like a successful save. iOS in particular caps
+// per-origin storage and evicts under pressure, so the app is told when a
+// write is refused and can say so instead of silently dropping the change.
 function save(books) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(repair(books)));
+    return true;
+  } catch (err) {
+    window.dispatchEvent(new CustomEvent("shelfie:storage-full", { detail: err?.name }));
+    return false;
+  }
 }
 
 export function getAllBooks() {

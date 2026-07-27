@@ -130,7 +130,8 @@ const VIEW_KEY = "shelfie.view.v1";
 let viewMode = localStorage.getItem(VIEW_KEY) ?? "grid";
 
 function starString(rating) {
-  return "★".repeat(rating) + "☆".repeat(5 - rating);
+  const n = Math.min(5, Math.max(0, Math.round(Number(rating) || 0)));
+  return "★".repeat(n) + "☆".repeat(5 - n);
 }
 
 // A cover that always looks intentional: a coloured spine-styled fallback
@@ -356,6 +357,12 @@ let lastUndo = null;
 
 function toast(message, { actionLabel, onAction, ms = 5000 } = {}) {
   const region = $("#toast-region");
+  // A modal <dialog> paints in the browser's top layer, above everything in
+  // the body no matter the z-index — so a toast raised while the add sheet is
+  // open (with its Undo) would be invisible. Move it into that layer.
+  const openDialog = document.querySelector("dialog[open]");
+  const host = openDialog ?? document.body;
+  if (region.parentElement !== host) host.appendChild(region);
   region.innerHTML = `
     <div class="toast">
       <span>${esc(message)}</span>
@@ -370,6 +377,24 @@ function toast(message, { actionLabel, onAction, ms = 5000 } = {}) {
     onAction?.();
   });
 }
+
+// The store couldn't write. Say so plainly and point at the way out — a
+// silent failure here looks like the app losing books.
+let storageWarned = 0;
+window.addEventListener("shelfie:storage-full", () => {
+  if (Date.now() - storageWarned < 30000) return; // one warning per burst
+  storageWarned = Date.now();
+  // Deferred by a tick on purpose: the failed write happens *inside* an
+  // action that goes on to toast its own success ("Rated ★★★★"), and the
+  // truth has to be the message left standing.
+  setTimeout(() => {
+    toast("Storage is full — that change wasn't saved. Export a backup, then remove some books.", {
+      actionLabel: "Export",
+      onAction: () => showScreen("export"),
+      ms: 12000,
+    });
+  }, 0);
+});
 
 // Snapshot a book so an action can be reversed with one tap.
 function undoable(message, book, apply) {
@@ -460,10 +485,14 @@ function shareToCommunity(id) {
 
 // ---------- rendering ----------
 
+// Escapes quotes as well as angle brackets: this output goes into attributes
+// (title="…", data-id="…") as often as it goes into text, and book titles and
+// contributor names arrive from Open Library, Google Books, and other people's
+// phones — a lone double quote must not be able to end the attribute.
 function esc(s) {
-  const div = document.createElement("div");
-  div.textContent = s ?? "";
-  return div.innerHTML;
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
 }
 
 // The Owned shelf is "everything you own", so a book you own that also sits
@@ -1251,7 +1280,18 @@ $("#title-form").addEventListener("submit", async (e) => {
   const q = $("#title-input").value.trim();
   if (!q) return;
   scanStatus.textContent = "Searching…";
-  const results = await api.searchByTitle(q, { language: $("#search-lang").value });
+  let results;
+  try {
+    results = await api.searchByTitle(q, { language: $("#search-lang").value });
+  } catch {
+    // Don't tell someone their book doesn't exist when the lookup is what
+    // failed — they'd go and add it by hand for no reason.
+    scanStatus.textContent = navigator.onLine
+      ? "Couldn't reach Open Library just now. Try again in a moment."
+      : "You're offline — book search needs a connection.";
+    searchResults.innerHTML = "";
+    return;
+  }
   scanStatus.textContent = results.length
     ? `${results.length} match${results.length === 1 ? "" : "es"} — scroll for more.`
     : "No matches found.";
@@ -1313,6 +1353,34 @@ function queueBookForConfirm(book) {
   if (!confirmModal.open) showNextPendingBook();
 }
 
+// Is this book already in the library? The same edition (matching ISBN-13, or
+// the id we'd generate) is the same record and gets updated rather than
+// duplicated. A different edition of the same work is a real second book —
+// worth pointing out, but the user's call.
+function findExisting(book) {
+  const all = db.getAllBooks();
+  const byId = all.find((b) => b.id === book.id);
+  if (byId) return { book: byId, sameEdition: true };
+  if (book.isbn13) {
+    const byIsbn = all.find((b) => b.isbn13 && b.isbn13 === book.isbn13);
+    if (byIsbn) return { book: byIsbn, sameEdition: true };
+  }
+  if (book.workKey) {
+    const byWork = all.find((b) => b.workKey && b.workKey === book.workKey);
+    if (byWork) return { book: byWork, sameEdition: false };
+  }
+  return null;
+}
+
+function dupeNote(book) {
+  const hit = findExisting(book);
+  if (!hit) return "";
+  const where = SHELF_LABEL[hit.book.shelf] ?? "your library";
+  return hit.sameEdition
+    ? `<p class="dupe-note">Already on your ${esc(where)} shelf — this will update that copy, not add a second one.</p>`
+    : `<p class="dupe-note">You already have a different edition of this on ${esc(where)}.</p>`;
+}
+
 function showNextPendingBook() {
   const book = pendingBooks[0];
   if (!book) {
@@ -1329,6 +1397,7 @@ function showNextPendingBook() {
         book.pageCount ? book.pageCount + " pages" : null].filter(Boolean).join(" · "))}</p>
       <p class="isbn">${book.isbn13 ? "ISBN-13 " + esc(book.isbn13) : ""}
         ${book.isbn10 ? " · ISBN-10 " + esc(book.isbn10) : ""}</p>
+      ${dupeNote(book)}
     </div>`;
   // A scanned barcode means a physical book in hand; reset per book. The
   // picker only appears when copy-type tracking is enabled in Settings.
@@ -1339,8 +1408,12 @@ function showNextPendingBook() {
 
 document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
   btn.addEventListener("click", () => {
-    const book = pendingBooks.shift();
-    if (!book) return;
+    const scanned = pendingBooks.shift();
+    if (!scanned) return;
+    // Same edition already on a shelf: keep its id so this updates the record
+    // (and its ratings and reviews) instead of creating a twin.
+    const hit = findExisting(scanned);
+    const book = hit?.sameEdition ? { ...scanned, id: hit.book.id } : scanned;
     const shelf = btn.dataset.addShelf;
     const alsoOwn = $("#also-own-checkbox").checked;
     const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
@@ -1366,15 +1439,28 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     void tab?.offsetWidth; // restart the animation
     tab?.classList.add("pop");
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
+    // Undoing a merge has to put the old record back — removing it would
+    // take the book (and its ratings) with it.
+    const previous = hit?.sameEdition ? JSON.parse(JSON.stringify(hit.book)) : null;
     toast(`Added to ${SHELF_LABEL[shelf]}`, {
       actionLabel: "Undo",
       onAction: () => {
-        db.removeBook(book.id);
+        if (previous) db.replaceBook(previous);
+        else db.removeBook(book.id);
         renderShelf();
-        toast("Removed again");
+        toast(previous ? "Put back how it was" : "Removed again");
       },
     });
     showNextPendingBook();
+  })
+);
+
+// A toast parked inside a dialog (see toast()) would vanish with it, taking
+// its Undo along; hand it back to the page so it lives out its five seconds.
+document.querySelectorAll("dialog").forEach((dlg) =>
+  dlg.addEventListener("close", () => {
+    const region = $("#toast-region");
+    if (region.parentElement === dlg) document.body.appendChild(region);
   })
 );
 
@@ -1427,6 +1513,10 @@ bookList.addEventListener("click", (e) => {
     // Moving a book between shelves is the one quick action worth a beat of
     // hesitation, so the first tap only arms it.
     if (move.dataset.armed !== "1") return armQuickAction(move, "Sure?");
+    // Too soon to be a considered second tap — it's a double-tap or a mash.
+    // Restart the window rather than counting it, so drumming on the button
+    // never commits; only a tap after a pause does.
+    if (Date.now() - armedAt < ARM_DELAY) return armQuickAction(move, "Sure?");
     disarmQuickAction();
     undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
@@ -1459,9 +1549,16 @@ bookList.addEventListener("click", (e) => {
 let armedBtn = null;
 let armedTimer = null;
 
+// A double-tap — a bouncy finger, or a stray one on a scrolling list — must
+// not sail through both taps. The confirming tap only counts once the button
+// has been armed long enough to have been seen.
+const ARM_DELAY = 350;
+let armedAt = 0;
+
 function armQuickAction(btn, prompt) {
   disarmQuickAction();
   armedBtn = btn;
+  armedAt = Date.now();
   btn.dataset.armed = "1";
   btn.classList.add("armed");
   const label = btn.querySelector(".qa-label");
@@ -2011,6 +2108,7 @@ async function buildRecommendations(books, f) {
   const have = new Set(books.map((b) => normTitle(b.title)));
   const haveWorks = new Set(books.map((b) => b.workKey).filter(Boolean));
   const found = new Map();
+  api.resetSearchReachability();
 
   await Promise.allSettled(
     queries.map(async ({ q, reason }) => {
@@ -2046,6 +2144,13 @@ async function buildRecommendations(books, f) {
   //   quality     (small)           — ratings, scaled by how many people
   //                 rated it, so a 4.6 from 9 readers doesn't beat a match
   const candidates = [...found.values()];
+  // Nothing came back and nothing got through: that's an outage, not a
+  // library with no matches. Say the true thing.
+  if (!candidates.length && !api.lastSearchReachedServer()) {
+    throw new Error(
+      navigator.onLine ? "Open Library isn't answering" : "you're offline"
+    );
+  }
 
   // Fetch real subjects for the strongest candidates so overlap is measured,
   // not assumed. Cached in api.js, so this is cheap after the first run.

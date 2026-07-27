@@ -113,7 +113,16 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   pages finished this year with a per-month bar row, most-read authors, and the
   genres on your shelves. All derived from data already on the shelves.
 - **Honest connection status** — when you're offline or sync is paused, a quiet
-  pill says so and reassures you that changes are saved on the phone.
+  pill says so and reassures you that changes are saved on the phone. A failed
+  book search says the lookup failed rather than "no matches found", Discover
+  distinguishes an Open Library outage from an empty result, and if the phone's
+  storage is full the app says the change wasn't saved instead of pretending it
+  was.
+- **Hard to break** 🛟 — every record is normalised on the way out of
+  `js/db.js`, so a malformed book (a bad import, an old app version, another
+  member's phone) is repaired rather than throwing mid-render and leaving a
+  shelf looking empty. Search results from Open Library get the same treatment,
+  and all text is escaped for attribute contexts as well as body text.
 - **Never homework** 🌿 — there is deliberately no "N books need rating" counter.
   At most one finished-but-unrated book is offered at a time, rateable in a
   single tap and easy to wave off (which stays quiet for days).
@@ -198,7 +207,7 @@ in `index.html` applies the saved choice before first paint (no flash).
 index.html        app shell (shelf tabs, bottom nav, modals)
 css/styles.css    design tokens, light/dark themes, layouts
 js/app.js         UI logic and state
-js/db.js          localStorage persistence
+js/db.js          localStorage persistence (+ repairs malformed records)
 js/api.js         Open Library / Google Books lookups + series detection
 js/filters.js     genre mapping, filter predicates, sort orders
 js/themes.js      aesthetic registry + light/dark resolution

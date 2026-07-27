@@ -5,6 +5,12 @@
 const OL = "https://openlibrary.org";
 const GBOOKS = "https://www.googleapis.com/books/v1";
 
+// Search results are third-party data: fields go missing, arrive as the wrong
+// type, or turn up null. These keep a malformed row from poisoning a whole
+// result set — the app's own records are guaranteed clean by js/db.js.
+const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+const number = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
 // ---------- ISBN helpers ----------
 
 export function normalizeIsbn(raw) {
@@ -191,21 +197,27 @@ export async function searchByTitle(query, { limit = 40, language = "eng" } = {}
     `${OL}/search.json?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}` +
     `&limit=${limit}` + (restrict ? `&lang=${LANG2[language] ?? "en"}` : "");
   const res = await fetch(url);
-  if (!res.ok) return [];
+  // A failed request is not "no such book" — throw so the caller can say
+  // what actually happened instead of telling the user their book isn't
+  // in the catalogue.
+  if (!res.ok) throw new Error(`Open Library search failed (${res.status})`);
   const data = await res.json();
-  return (data.docs ?? []).map((d) => {
-    const ed = d.editions?.docs?.[0]; // OL's best edition for the requested language
-    const cover = ed?.cover_i ?? d.cover_i;
-    return {
-      workKey: d.key,
-      title: ed?.title ?? d.title,
-      authors: d.author_name ?? [],
-      year: d.first_publish_year ?? null,
-      coverUrl: cover ? `https://covers.openlibrary.org/b/id/${cover}-S.jpg` : null,
-      isbns: ed?.isbn ?? d.isbn ?? [],
-      language: ed?.language?.[0] ?? d.language?.[0] ?? null,
-    };
-  });
+  return (data.docs ?? [])
+    .filter((d) => d && typeof d.key === "string")
+    .map((d) => {
+      const ed = d.editions?.docs?.[0]; // OL's best edition for the requested language
+      const cover = ed?.cover_i ?? d.cover_i;
+      const title = [ed?.title, d.title].find((t) => typeof t === "string");
+      return {
+        workKey: d.key,
+        title: title ?? "Untitled",
+        authors: strings(d.author_name),
+        year: number(d.first_publish_year),
+        coverUrl: cover ? `https://covers.openlibrary.org/b/id/${cover}-S.jpg` : null,
+        isbns: strings(ed?.isbn ?? d.isbn),
+        language: strings(ed?.language ?? d.language)[0] ?? null,
+      };
+    });
 }
 
 // ---------- Recommendations ----------
@@ -279,18 +291,21 @@ export async function searchRanked(query, { limit = 20, sort = "rating" } = {}) 
     `&fields=${fields}&limit=${limit}`;
   const res = await fetch(url);
   if (!res.ok) return [];
+  noteSearchReachable();
+  // One unusable row must not cost the whole list: a null in `docs` used to
+  // throw here and leave Discover looking empty rather than imperfect.
   return ((await res.json()).docs ?? [])
-    .filter((d) => d.title)
+    .filter((d) => d && typeof d.title === "string" && typeof d.key === "string")
     .map((d) => ({
       workKey: d.key,
       title: d.title,
-      authors: d.author_name ?? [],
-      year: d.first_publish_year ?? null,
+      authors: strings(d.author_name),
+      year: number(d.first_publish_year),
       coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
-      avgRating: d.ratings_average ?? null,
-      ratingsCount: d.ratings_count ?? 0,
-      pages: d.number_of_pages_median ?? null,
-      editions: d.edition_count ?? 0,
+      avgRating: number(d.ratings_average),
+      ratingsCount: number(d.ratings_count) ?? 0,
+      pages: number(d.number_of_pages_median),
+      editions: number(d.edition_count) ?? 0,
     }));
 }
 
@@ -313,6 +328,21 @@ export async function searchRankedWithFallback(baseQuery, clauses, opts) {
   let rows = await searchRanked(full, opts);
   if (rows.length === 0 && clauses) rows = await searchRanked(baseQuery, opts);
   return rows;
+}
+
+// Whether the last batch of ranked searches could reach Open Library at all.
+// An outage and a genuinely empty result set look identical to the caller
+// otherwise, and telling someone "nothing matches your filters" during an
+// outage sends them fiddling with filters that were never the problem.
+let reachedOpenLibrary = true;
+export function lastSearchReachedServer() {
+  return reachedOpenLibrary;
+}
+export function resetSearchReachability() {
+  reachedOpenLibrary = false;
+}
+export function noteSearchReachable() {
+  reachedOpenLibrary = true;
 }
 
 // ---------- Series detection & listing ----------
