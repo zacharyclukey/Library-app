@@ -1229,6 +1229,13 @@ $("#photo-input").addEventListener("change", async (e) => {
   }
 });
 
+scanStatus.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-open-existing]");
+  if (!btn) return;
+  addModal.close();
+  openDetail(btn.dataset.openExisting);
+});
+
 async function handleFoundIsbn(isbn) {
   try {
     const book = await api.lookupByIsbn(isbn);
@@ -1236,8 +1243,28 @@ async function handleFoundIsbn(isbn) {
       scanStatus.textContent = `No book found for ISBN ${isbn}. Try searching by title below.`;
       return;
     }
-    if (db.hasBook(book.id)) {
-      scanStatus.textContent = `“${book.title}” is already in your library.`;
+    // Already own this exact copy? Nothing to decide — say so and move on,
+    // which keeps scanning a stack of books fast. On any other shelf it's
+    // worth opening the sheet: scanning a book usually means you now have it
+    // in hand, and "it's on your Wishlist" should be one tap from Owned.
+    const already = findExisting(book);
+    if (already?.sameEdition && already.book.shelf === "owned") {
+      // If that copy was added by title search it has no edition details;
+      // the barcode in your hand is exactly what's missing, so fill them in.
+      const vague = !already.book.isbn13;
+      if (vague) {
+        db.addBook({ ...book, id: already.book.id });
+        seriesCache.delete(already.book.id);
+        renderShelf();
+      }
+      // Don't dead-end: with a big shelf, scanning a book is often the
+      // fastest way to *find* it, so offer the way through.
+      scanStatus.innerHTML = `${
+        vague
+          ? `You already own “${esc(book.title)}” — filled in this edition's details.`
+          : `You already own “${esc(book.title)}” — it's on your Owned shelf.`
+      } <button class="link-btn" data-open-existing="${esc(already.book.id)}">Open it</button>`;
+      navigator.vibrate?.(30);
       return;
     }
     // Buzz and flash: unmistakable feedback that the barcode locked on.
@@ -1367,7 +1394,10 @@ function findExisting(book) {
   }
   if (book.workKey) {
     const byWork = all.find((b) => b.workKey && b.workKey === book.workKey);
-    if (byWork) return { book: byWork, sameEdition: false };
+    // Two records can only be *different* editions if both name an edition.
+    // A shelf copy added by title search carries no ISBN, so scanning that
+    // book fills in the edition details rather than making a second entry.
+    if (byWork) return { book: byWork, sameEdition: !byWork.isbn13 };
   }
   return null;
 }
@@ -1375,10 +1405,13 @@ function findExisting(book) {
 function dupeNote(book) {
   const hit = findExisting(book);
   if (!hit) return "";
-  const where = SHELF_LABEL[hit.book.shelf] ?? "your library";
-  return hit.sameEdition
-    ? `<p class="dupe-note">Already on your ${esc(where)} shelf — this will update that copy, not add a second one.</p>`
-    : `<p class="dupe-note">You already have a different edition of this on ${esc(where)}.</p>`;
+  const where = esc(SHELF_LABEL[hit.book.shelf] ?? "your library");
+  if (hit.sameEdition) {
+    return `<p class="dupe-note">You already have this on your ${where} shelf — picking a
+      shelf updates it rather than adding a second one.</p>`;
+  }
+  return `<p class="dupe-note">You already have a different edition of this on your ${where}
+    shelf. Adding it makes a second entry — right if you own both copies.</p>`;
 }
 
 function showNextPendingBook() {

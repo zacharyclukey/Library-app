@@ -118,6 +118,14 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   distinguishes an Open Library outage from an empty result, and if the phone's
   storage is full the app says the change wasn't saved instead of pretending it
   was.
+- **No accidental duplicates** 👯 — scan a book you already own and it says so
+  rather than adding a twin, with a one-tap **Open it** to jump to the book (on
+  a big shelf, scanning is the fastest way to *find* something). If that copy
+  was added by title search, the barcode fills in the missing edition details.
+  Scan one sitting on To Read or Wishlist and the sheet opens so a single tap
+  moves it to Owned, keeping its ratings and reviews. Only a genuinely
+  different edition — both copies naming a different ISBN — becomes a second
+  entry, and it tells you before it does.
 - **Hard to break** 🛟 — every record is normalised on the way out of
   `js/db.js`, so a malformed book (a bad import, an old app version, another
   member's phone) is repaired rather than throwing mid-render and leaving a
