@@ -5,6 +5,7 @@ import * as flt from "./filters.js";
 import * as xport from "./export.js";
 import * as themes from "./themes.js";
 import * as community from "./community.js";
+import { icon } from "./icons.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 
 // ---------- element handles ----------
@@ -80,7 +81,8 @@ function myRating(b) {
 }
 
 const SHELF_LABEL = { owned: "Owned", tbr: "To Read", completed: "Finished", wishlist: "Wishlist" };
-const SHELF_ICON = { owned: "📗", tbr: "🔖", completed: "✅", wishlist: "🎁" };
+const SHELF_ICO = { owned: "books", tbr: "bookmark", completed: "check", wishlist: "gift" };
+const SHELF_ICON = new Proxy({}, { get: (_, k) => icon(SHELF_ICO[k] ?? "books") });
 const SHELVES = ["owned", "tbr", "completed", "wishlist"];
 
 // How the copy exists: physical, Kindle/e-book, or Audible/audiobook.
@@ -159,6 +161,13 @@ function storeLinks(b) {
     ["🏛️ Library (WorldCat)", `https://search.worldcat.org/search?q=${q}`],
     ["⭐ Goodreads", `https://www.goodreads.com/search?q=${q}`],
   ];
+}
+
+// Fill in every declarative icon slot in the HTML shell.
+function paintIcons(root = document) {
+  root.querySelectorAll("[data-ico]").forEach((el) => {
+    el.innerHTML = icon(el.dataset.ico);
+  });
 }
 
 // ---------- the "no homework" nudge ----------
@@ -458,8 +467,16 @@ function gridCard(b, showNames) {
   return `
     <article class="grid-book" data-id="${esc(b.id)}" title="${esc(b.title)}">
       <div class="flip">
-        <div class="flip-front">${coverHtml(b)}</div>
+        <div class="flip-front">
+          ${coverHtml(b)}
+          <button class="flip-btn" data-flip aria-label="Quick actions and details">${icon("more")}</button>
+        </div>
         <div class="flip-back" aria-hidden="true">
+          <p class="qa-facts">${esc([
+            b.publishDate ? String(b.publishDate).match(/\d{4}/)?.[0] : null,
+            b.pageCount ? `${b.pageCount}pp` : null,
+            b.series?.name ? `${b.series.name}${b.series.position ? " #" + b.series.position : ""}` : null,
+          ].filter(Boolean).join(" · "))}</p>
           <div class="qa-stars">
             ${[1, 2, 3, 4, 5].map((n) =>
               `<button class="${rating >= n ? "filled" : ""}" data-qa-rate="${n}"
@@ -467,17 +484,16 @@ function gridCard(b, showNames) {
           </div>
           <div class="qa-row">
             ${b.shelf === "tbr" || b.shelf === "owned"
-              ? `<button class="qa-btn ${b.reading ? "on" : ""}" data-qa-reading title="Currently reading">📖</button>`
+              ? `<button class="qa-btn ${b.reading ? "on" : ""}" data-qa-reading title="Currently reading">${icon("bookOpen")}</button>`
               : ""}
             ${b.shelf !== "completed"
-              ? `<button class="qa-btn" data-qa-move="completed" title="Move to Finished">✅</button>` : ""}
+              ? `<button class="qa-btn" data-qa-move="completed" title="Move to Finished">${icon("check")}</button>` : ""}
             ${b.shelf !== "tbr"
-              ? `<button class="qa-btn" data-qa-move="tbr" title="Move to To Read">🔖</button>` : ""}
+              ? `<button class="qa-btn" data-qa-move="tbr" title="Move to To Read">${icon("bookmark")}</button>` : ""}
             ${b.shelf !== "wishlist"
-              ? `<button class="qa-btn" data-qa-move="wishlist" title="Move to Wishlist">🎁</button>` : ""}
+              ? `<button class="qa-btn" data-qa-move="wishlist" title="Move to Wishlist">${icon("gift")}</button>` : ""}
           </div>
           <button class="qa-details" data-qa-details>Full details</button>
-          <p class="qa-hint">tap cover to flip back</p>
         </div>
       </div>
       <div>
@@ -598,7 +614,7 @@ $("#list-search").addEventListener("input", (e) => {
 function updateViewToggle() {
   const btn = $("#view-toggle");
   // Show the icon of the view you'd switch *to*.
-  btn.textContent = viewMode === "grid" ? "▤" : "▦";
+  btn.innerHTML = icon(viewMode === "grid" ? "list" : "grid");
   btn.title = viewMode === "grid" ? "Switch to list view" : "Switch to shelf view";
 }
 
@@ -1183,16 +1199,42 @@ bookList.addEventListener("click", (e) => {
     return;
   }
   if (e.target.closest("[data-qa-details]")) {
-    flip.classList.remove("flipped");
-    flippedIds.delete(id);
+    setFlipped(flip, id, false);
     return openDetail(id);
   }
+  if (e.target.closest("[data-flip]")) return setFlipped(flip, id, !flip.classList.contains("flipped"));
+  if (suppressNextCardClick) return; // a long-press already flipped it
 
-  const nowFlipped = flip.classList.toggle("flipped");
-  if (nowFlipped) flippedIds.add(id);
+  // Flipped card: tapping the empty part of the back returns to the cover.
+  if (flip.classList.contains("flipped")) return setFlipped(flip, id, false);
+  openDetail(id);
+});
+
+function setFlipped(flip, id, on) {
+  flip.classList.toggle("flipped", on);
+  if (on) flippedIds.add(id);
   else flippedIds.delete(id);
   navigator.vibrate?.(8);
+}
+
+// Long-press anywhere on a card is a shortcut to the same quick actions.
+let pressTimer = null;
+let suppressNextCardClick = false;
+bookList.addEventListener("pointerdown", (e) => {
+  const card = e.target.closest(".grid-book");
+  if (!card || e.target.closest("[data-qa-details],[data-qa-rate],[data-qa-move],[data-qa-reading]")) return;
+  clearTimeout(pressTimer);
+  pressTimer = setTimeout(() => {
+    const flip = card.querySelector(".flip");
+    if (!flip) return;
+    setFlipped(flip, card.dataset.id, !flip.classList.contains("flipped"));
+    suppressNextCardClick = true;
+    setTimeout(() => (suppressNextCardClick = false), 400);
+  }, 450);
 });
+["pointerup", "pointercancel", "pointermove", "scroll"].forEach((ev) =>
+  bookList.addEventListener(ev, () => clearTimeout(pressTimer), { passive: true })
+);
 
 async function openDetail(id) {
   const b = db.getBook(id);
@@ -2006,7 +2048,7 @@ function renderSettingsScreen() {
     <div class="settings-section">
       <button class="settings-row" data-go="profile">
         <span class="row-main">
-          <span class="row-icon">👤</span>
+          <span class="row-icon">${icon("user")}</span>
           <span>Profile
             <span class="row-sub">${me ? esc(me) : "Not set — tap to choose"}</span>
           </span>
@@ -2015,7 +2057,7 @@ function renderSettingsScreen() {
       </button>
       <button class="settings-row" data-go="sync">
         <span class="row-main">
-          <span class="row-icon">👩‍❤️‍👨</span>
+          <span class="row-icon">${icon("users")}</span>
           <span>Shared library
             <span class="row-sub">${
               household ? "On · " + esc(household) : sync.isConfigured() ? "Off" : "Needs setup"
@@ -2026,7 +2068,7 @@ function renderSettingsScreen() {
       </button>
       <button class="settings-row" data-go="import">
         <span class="row-main">
-          <span class="row-icon">📥</span>
+          <span class="row-icon">${icon("download")}</span>
           <span>Restore from backup
             <span class="row-sub">Load a Shelfie JSON export</span>
           </span>
@@ -2035,7 +2077,7 @@ function renderSettingsScreen() {
       </button>
       <button class="settings-row" id="medium-toggle">
         <span class="row-main">
-          <span class="row-icon">🎧</span>
+          <span class="row-icon">${icon("headphones")}</span>
           <span>Track copy types
             <span class="row-sub">Label books as print, e-book, or audiobook</span>
           </span>
@@ -2044,7 +2086,7 @@ function renderSettingsScreen() {
       </button>
       <button class="settings-row" id="content-toggle">
         <span class="row-main">
-          <span class="row-icon">🌶️</span>
+          <span class="row-icon">${icon("flame")}</span>
           <span>Spice &amp; content ratings
             <span class="row-sub">Tag books Kids / Teen / Mature / Explicit with a 🌶️ scale</span>
           </span>
@@ -2053,7 +2095,7 @@ function renderSettingsScreen() {
       </button>
       <button class="settings-row" id="community-toggle" ${community.isAvailable() ? "" : "disabled"}>
         <span class="row-main">
-          <span class="row-icon">🌍</span>
+          <span class="row-icon">${icon("globe")}</span>
           <span>Community sharing
             <span class="row-sub">${community.isAvailable()
               ? "Share your ratings, tags &amp; reviews (with your first name) to power everyone's recommendations"
@@ -2064,7 +2106,7 @@ function renderSettingsScreen() {
       </button>
       <button class="settings-row" id="persist-toggle">
         <span class="row-main">
-          <span class="row-icon">🛡️</span>
+          <span class="row-icon">${icon("shield")}</span>
           <span>Protect data from cleanup
             <span class="row-sub" id="persist-status">Checking…</span>
           </span>
@@ -2074,7 +2116,7 @@ function renderSettingsScreen() {
     </div>
 
     <div class="settings-section">
-      <span class="filter-label">Aesthetic</span>
+      <span class="filter-label">${icon("palette")} Aesthetic</span>
       <div class="theme-grid">
         ${themes.THEMES.map(
           (t) => `
@@ -2640,6 +2682,7 @@ async function backfillSubjects() {
 }
 
 // ---------- init ----------
+paintIcons();
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }

@@ -36,6 +36,22 @@
     transparent 13px 19px
   );
   --header-grain: var(--wood-grain);
+
+  /* Icon personality: each aesthetic sets its own hand. */
+  --icon-stroke: 1.7;
+  --icon-cap: round;
+}
+
+.ico {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke);
+  stroke-linecap: var(--icon-cap);
+  stroke-linejoin: var(--icon-cap);
+  vertical-align: -0.18em;
 }
 
 :root[data-mode="dark"] {
@@ -49,6 +65,8 @@
 
 :root,
 :root[data-skin="reading-room"] {
+  --icon-stroke: 1.85;
+  --icon-cap: round;
   --bg: #f4ecdc;
   --bg-soft: #eadfc9;
   --card: #fffaf1;
@@ -121,6 +139,8 @@
 /* ---------- Cottage Garden: sage, cream, rose ---------- */
 
 :root[data-skin="cottage"] {
+  --icon-stroke: 2;      /* rounded and friendly */
+  --icon-cap: round;
   --bg: #f4f2e6;
   --bg-soft: #e8e7d4;
   --card: #fffef8;
@@ -193,6 +213,8 @@
 /* ---------- Dark Academia: oxblood, aged paper, candle gold ---------- */
 
 :root[data-skin="dark-academia"] {
+  --icon-stroke: 1.55;   /* finer, engraved */
+  --icon-cap: square;
   --bg: #ece2d0;
   --bg-soft: #ddd0b8;
   --card: #f8f1e2;
@@ -267,6 +289,8 @@
 :root[data-skin="modern"] {
   --serif: var(--sans);
   --header-grain: none;
+  --icon-stroke: 1.5;    /* thin and crisp */
+  --icon-cap: butt;
 
   --bg: #f4f6fa;
   --bg-soft: #e9edf4;
@@ -513,9 +537,7 @@ body {
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--ink);
-  font-size: 1.5rem;
   line-height: 1;
-  padding-bottom: 0.18em;
   cursor: pointer;
   box-shadow: var(--shadow-1);
 }
@@ -1047,7 +1069,25 @@ img.cover.missing { display: none; }
   -webkit-backface-visibility: hidden;
   transition: transform 0.4s cubic-bezier(0.3, 0.9, 0.4, 1);
 }
-.flip-front { transform: rotateY(0deg); }
+.flip-front { transform: rotateY(0deg); position: relative; }
+.flip-btn {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  backdrop-filter: blur(4px);
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+}
+.flip-btn:active { transform: scale(0.92); }
 .flip-back {
   position: absolute;
   inset: 0;
@@ -1098,7 +1138,14 @@ img.cover.missing { display: none; }
   padding: 0.4rem 0.3rem;
   cursor: pointer;
 }
-.qa-hint { font-size: 0.6rem; text-align: center; color: var(--muted); margin: 0; }
+.qa-facts {
+  margin: 0;
+  font-size: 0.6rem;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--muted);
+}
+.qa-facts:empty { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .flip-front, .flip-back { transition: none; }
@@ -1143,7 +1190,20 @@ img.cover.missing { display: none; }
 }
 .nav-btn:hover { color: var(--ink-soft); }
 .nav-btn.active { color: var(--accent); font-weight: 650; }
-.nav-icon { font-size: 1.18rem; line-height: 1; }
+.nav-icon { font-size: 1.18rem; line-height: 1; display: grid; place-items: center; }
+.nav-icon .ico { width: 1.45rem; height: 1.45rem; }
+.tab-icon .ico { width: 1.05rem; height: 1.05rem; vertical-align: -0.2em; }
+.screen-head h2 .ico { width: 1.25rem; height: 1.25rem; vertical-align: -0.12em; margin-right: 0.15rem; }
+.row-icon .ico { width: 1.3rem; height: 1.3rem; }
+.method-icon .ico { width: 1.7rem; height: 1.7rem; }
+.search-icon .ico { width: 1rem; height: 1rem; opacity: 0.75; }
+.tool-btn .ico { width: 1.05rem; height: 1.05rem; }
+.close-btn .ico, .back-btn .ico { width: 1rem; height: 1rem; }
+.back-btn .ico { width: 1.15rem; height: 1.15rem; }
+.qa-btn .ico { width: 1.05rem; height: 1.05rem; }
+.shelf-pick .ico { width: 1.2rem; height: 1.2rem; }
+.badge .ico, .mini-badge .ico { width: 0.85rem; height: 0.85rem; vertical-align: -0.15em; }
+.nav-fab .ico { width: 1.7rem; height: 1.7rem; stroke-width: 2.2; }
 :root[data-theme="dark"] .nav-btn.active,
 .nav-btn.active { color: var(--accent); }
 

@@ -80,9 +80,15 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Two ways to browse** — a cover-forward shelf grid where each row of books sits
   on a wooden ledge (with spine-styled fallback covers for books with no jacket
   art), or a detailed list, plus a bottom navigation bar.
-- **Tap a cover to flip it** 🔄 — the back of each card is your own take: rate it,
-  mark it as currently reading, move shelves, or open the full book sheet. Every
-  action shows a toast with **Undo**, so nothing needs a confirmation popup.
+- **Tap for the book page, flip for quick actions** 🔄 — tapping a card opens its
+  full detail sheet; the **⋯** button (or a long press) flips the cover over to
+  a quick panel with the common facts, a rating, currently-reading, and shelf
+  moves. Every action shows a toast with **Undo**, so nothing needs a
+  confirmation popup.
+- **Themed icon set** — icons are inline SVG drawn in `currentColor`, and each
+  aesthetic sets its own hand via `--icon-stroke` / `--icon-cap`: Reading Room
+  soft and heavier, Cottage rounded, Dark Academia finely engraved, Modern thin
+  and crisp (see `js/icons.js`).
 - **Built for big shelves** 📚 — cards render in chunks as you scroll (a
   300-book shelf paints as fast as a small one), an A–Z rail jumps you through
   the list when sorted by title or author, and search is debounced.

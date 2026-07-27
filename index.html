@@ -47,44 +47,44 @@
   <section id="screen-shelves" class="screen active">
   <nav class="shelf-tabs" role="tablist">
     <button class="tab active" data-shelf="owned" role="tab" aria-selected="true">
-      <span class="tab-icon">📗</span>
+      <span class="tab-icon" data-ico="books"></span>
       <span class="tab-label">Owned</span>
       <span class="count" id="count-owned">0</span>
     </button>
     <button class="tab" data-shelf="tbr" role="tab" aria-selected="false">
-      <span class="tab-icon">🔖</span>
+      <span class="tab-icon" data-ico="bookmark"></span>
       <span class="tab-label">To Read</span>
       <span class="count" id="count-tbr">0</span>
     </button>
     <button class="tab" data-shelf="completed" role="tab" aria-selected="false">
-      <span class="tab-icon">✅</span>
+      <span class="tab-icon" data-ico="check"></span>
       <span class="tab-label">Finished</span>
       <span class="count" id="count-completed">0</span>
     </button>
     <button class="tab" data-shelf="wishlist" role="tab" aria-selected="false">
-      <span class="tab-icon">🎁</span>
+      <span class="tab-icon" data-ico="gift"></span>
       <span class="tab-label">Wishlist</span>
       <span class="count" id="count-wishlist">0</span>
     </button>
   </nav>
 
     <button id="profile-banner" class="profile-banner hidden">
-      👤 Who's using this phone? <span class="banner-action">Choose a profile</span>
+      <span data-ico="user"></span> Who's using this phone? <span class="banner-action">Choose a profile</span>
     </button>
     <button id="request-banner" class="profile-banner request hidden"></button>
     <div id="nudge-card" class="nudge hidden"></div>
     <div class="toolbar">
       <div class="search-row">
         <label class="search-wrap">
-          <span class="search-icon" aria-hidden="true">🔍</span>
+          <span class="search-icon" aria-hidden="true" data-ico="search"></span>
           <input type="search" id="list-search" placeholder="Search this shelf…" autocomplete="off" />
         </label>
         <button id="filter-toggle" class="tool-btn" aria-expanded="false" title="Filters and sorting">
-          <span aria-hidden="true">⚙</span>
+          <span aria-hidden="true" data-ico="sliders"></span>
           <span class="tool-label">Filters</span>
           <span id="filter-count" class="count hidden"></span>
         </button>
-        <button id="view-toggle" class="tool-btn icon-only" title="Switch between grid and list">▤</button>
+        <button id="view-toggle" class="tool-btn icon-only" title="Switch between grid and list"></button>
       </div>
       <div id="filter-panel" class="filter-panel hidden"></div>
       <div id="profile-filter" class="profile-filter"></div>
@@ -107,8 +107,8 @@
   <!-- ============ Discover screen ============ -->
   <section id="screen-discover" class="screen">
     <div class="screen-head">
-      <button class="back-btn" data-back aria-label="Back to shelves">‹</button>
-      <h2>✨ Recommended for you</h2>
+      <button class="back-btn" data-back aria-label="Back to shelves" data-ico="chevronLeft"></button>
+      <h2><span data-ico="sparkles"></span> Recommended for you</h2>
     </div>
     <div class="screen-body" id="discover-content"></div>
   </section>
@@ -116,8 +116,8 @@
   <!-- ============ Export screen ============ -->
   <section id="screen-export" class="screen">
     <div class="screen-head">
-      <button class="back-btn" data-back aria-label="Back to shelves">‹</button>
-      <h2>📤 Export a shelf</h2>
+      <button class="back-btn" data-back aria-label="Back to shelves" data-ico="chevronLeft"></button>
+      <h2><span data-ico="share"></span> Export a shelf</h2>
     </div>
     <div class="screen-body" id="export-content"></div>
   </section>
@@ -125,8 +125,8 @@
   <!-- ============ Settings screen ============ -->
   <section id="screen-settings" class="screen">
     <div class="screen-head">
-      <button class="back-btn" data-back aria-label="Back to shelves">‹</button>
-      <h2>⚙️ Settings</h2>
+      <button class="back-btn" data-back aria-label="Back to shelves" data-ico="chevronLeft"></button>
+      <h2><span data-ico="gear"></span> Settings</h2>
     </div>
     <div class="screen-body" id="settings-content"></div>
     <input type="file" id="import-input" accept="application/json" hidden />
@@ -135,8 +135,8 @@
   <!-- ============ Profile screen ============ -->
   <section id="screen-profile" class="screen">
     <div class="screen-head">
-      <button class="back-btn" data-back="settings" aria-label="Back">‹</button>
-      <h2>👤 Profiles</h2>
+      <button class="back-btn" data-back="settings" aria-label="Back" data-ico="chevronLeft"></button>
+      <h2><span data-ico="user"></span> Profiles</h2>
     </div>
     <div class="screen-body" id="profile-content"></div>
   </section>
@@ -144,8 +144,8 @@
   <!-- ============ Shared library screen ============ -->
   <section id="screen-sync" class="screen">
     <div class="screen-head">
-      <button class="back-btn" data-back="settings" aria-label="Back">‹</button>
-      <h2>👩‍❤️‍👨 Shared Library</h2>
+      <button class="back-btn" data-back="settings" aria-label="Back" data-ico="chevronLeft"></button>
+      <h2><span data-ico="users"></span> Shared Library</h2>
     </div>
     <div class="screen-body" id="sync-content"></div>
   </section>
@@ -153,17 +153,17 @@
 
   <nav class="bottom-nav">
     <button class="nav-btn active" id="nav-shelves">
-      <span class="nav-icon" aria-hidden="true">📚</span><span>Shelves</span>
+      <span class="nav-icon" aria-hidden="true" data-ico="books"></span><span>Shelves</span>
     </button>
     <button class="nav-btn" id="discover-btn">
-      <span class="nav-icon" aria-hidden="true">✨</span><span>Discover</span>
+      <span class="nav-icon" aria-hidden="true" data-ico="sparkles"></span><span>Discover</span>
     </button>
-    <button class="nav-fab" id="add-book-btn" title="Add a book" aria-label="Add a book">＋</button>
+    <button class="nav-fab" id="add-book-btn" title="Add a book" aria-label="Add a book" data-ico="plus"></button>
     <button class="nav-btn" id="export-btn">
-      <span class="nav-icon" aria-hidden="true">📤</span><span>Export</span>
+      <span class="nav-icon" aria-hidden="true" data-ico="share"></span><span>Export</span>
     </button>
     <button class="nav-btn" id="settings-btn">
-      <span class="nav-icon" aria-hidden="true">⚙️</span><span>Settings</span>
+      <span class="nav-icon" aria-hidden="true" data-ico="gear"></span><span>Settings</span>
       <span id="sync-dot" class="sync-dot hidden">●</span>
     </button>
   </nav>
@@ -172,17 +172,17 @@
   <dialog id="add-modal" class="modal">
     <div class="modal-header">
       <h2>Add a Book</h2>
-      <button class="close-btn" data-close="add-modal" aria-label="Close">✕</button>
+      <button class="close-btn" data-close="add-modal" aria-label="Close" data-ico="close"></button>
     </div>
 
     <div class="add-methods">
       <button id="method-camera" class="method-btn">
-        <span class="method-icon">📷</span>
+        <span class="method-icon" data-ico="camera"></span>
         <span class="method-label">Live camera scan</span>
         <span class="method-hint">Point at the barcode</span>
       </button>
       <button id="method-photo" class="method-btn">
-        <span class="method-icon">🖼️</span>
+        <span class="method-icon" data-ico="image"></span>
         <span class="method-label">Take / upload a picture</span>
         <span class="method-hint">Works with several books in one shot</span>
       </button>
@@ -217,7 +217,7 @@
   <dialog id="confirm-modal" class="modal">
     <div class="modal-header">
       <h2>Add to which shelf?</h2>
-      <button class="close-btn" data-close="confirm-modal" aria-label="Close">✕</button>
+      <button class="close-btn" data-close="confirm-modal" aria-label="Close" data-ico="close"></button>
     </div>
     <div id="confirm-book" class="confirm-book"></div>
     <div class="filter-group hidden" id="medium-group" style="margin-bottom:0.7rem">
@@ -229,10 +229,10 @@
       </div>
     </div>
     <div class="shelf-choice">
-      <button class="shelf-pick" data-add-shelf="owned"><span>📗</span> Owned</button>
-      <button class="shelf-pick" data-add-shelf="tbr"><span>🔖</span> To Read</button>
-      <button class="shelf-pick" data-add-shelf="completed"><span>✅</span> Finished</button>
-      <button class="shelf-pick" data-add-shelf="wishlist"><span>🎁</span> Wishlist</button>
+      <button class="shelf-pick" data-add-shelf="owned"><span data-ico="books"></span> Owned</button>
+      <button class="shelf-pick" data-add-shelf="tbr"><span data-ico="bookmark"></span> To Read</button>
+      <button class="shelf-pick" data-add-shelf="completed"><span data-ico="check"></span> Finished</button>
+      <button class="shelf-pick" data-add-shelf="wishlist"><span data-ico="gift"></span> Wishlist</button>
     </div>
     <label class="also-own">
       <input type="checkbox" id="also-own-checkbox" checked />
@@ -245,7 +245,7 @@
   <dialog id="detail-modal" class="modal sheet">
     <div class="modal-header">
       <h2>Book Details</h2>
-      <button class="close-btn" data-close="detail-modal" aria-label="Close">✕</button>
+      <button class="close-btn" data-close="detail-modal" aria-label="Close" data-ico="close"></button>
     </div>
     <div id="detail-content"></div>
   </dialog>
