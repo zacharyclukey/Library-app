@@ -2,6 +2,7 @@ import * as db from "./db.js";
 import * as api from "./api.js";
 import * as sync from "./sync.js";
 import * as flt from "./filters.js";
+import * as xport from "./export.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 
 // ---------- element handles ----------
@@ -17,6 +18,7 @@ const scannerVideo = $("#scanner-video");
 const searchResults = $("#search-results");
 
 let currentShelf = "owned";
+let visibleBooks = []; // what the current shelf is showing, for exports
 let pendingBooks = []; // queue of looked-up books waiting for shelf choice
 const seriesCache = new Map(); // book.id -> { series, books } | null
 
@@ -51,11 +53,33 @@ function myRating(b) {
   return b.ratings?.[currentProfile()] ?? b.rating ?? null;
 }
 
-const SHELF_LABEL = { owned: "Owned", tbr: "To Be Read", completed: "Completed", wishlist: "Wishlist" };
+const SHELF_LABEL = { owned: "Owned", tbr: "To Read", completed: "Finished", wishlist: "Wishlist" };
+const SHELF_ICON = { owned: "📗", tbr: "🔖", completed: "✅", wishlist: "🎁" };
 const SHELVES = ["owned", "tbr", "completed", "wishlist"];
+
+const VIEW_KEY = "shelfie.view.v1";
+const THEME_KEY = "shelfie.theme.v1";
+let viewMode = localStorage.getItem(VIEW_KEY) ?? "grid";
 
 function starString(rating) {
   return "★".repeat(rating) + "☆".repeat(5 - rating);
+}
+
+// A cover that always looks intentional: a coloured spine-styled fallback
+// (stable colour per title) sits underneath, and the real jacket covers it
+// when one loads.
+function coverHtml(b) {
+  const author = (b.authors ?? [])[0] ?? "";
+  return `<div class="cover-wrap" style="--h:${xport.hueOf(b.title)}">
+      <div class="cover-fallback">
+        <span class="fb-title">${esc(b.title)}</span>
+        ${author ? `<span class="fb-author">${esc(author)}</span>` : ""}
+      </div>
+      ${b.coverUrl
+        ? `<img class="cover" src="${esc(b.coverUrl)}" alt="" loading="lazy"
+             onerror="this.classList.add('missing')" />`
+        : ""}
+    </div>`;
 }
 
 // Outbound "find this book" links, built from the ISBN when we have one
@@ -112,50 +136,78 @@ function renderShelf() {
   books = flt.sortBooks(books, shelfSort, { ratingOf: myRating });
   updateFilterBadge();
 
-  emptyState.innerHTML =
-    hadBeforeFilter > 0 || q
-      ? "No books match your search or filters.<br />Tap <strong>⚙ Filters</strong> to adjust them."
-      : "No books on this shelf yet.<br />Tap <strong>＋ Add Book</strong> to scan one in.";
+  visibleBooks = books;
+  const filtered = hadBeforeFilter > 0 || q;
+  $("#empty-text").textContent = filtered
+    ? "Nothing matches your search or filters."
+    : `Your ${SHELF_LABEL[currentShelf]} shelf is empty.`;
+  $("#empty-action").textContent = filtered ? "Clear filters" : "＋ Add your first book";
+  $("#empty-action").dataset.action = filtered ? "clear" : "add";
   emptyState.classList.toggle("hidden", books.length > 0);
+  $("#shelf-summary").textContent = books.length ? xport.summaryLine(books) : "";
+
   const showNames = allProfiles().length > 1;
+  bookList.className = "book-list " + viewMode;
   bookList.innerHTML = books
-    .map((b) => {
-      const rating = myRating(b);
-      const cached = seriesCache.get(b.id);
-      const missing = cached?.missingCount ?? 0;
-      const seriesBadge = b.series?.name
-        ? `<span class="badge series-badge" title="Part of the ${esc(b.series.name)} series">
-             ${esc(b.series.name)}${b.series.position ? " #" + b.series.position : ""}
-           </span>`
-        : "";
-      const moreBadge = missing > 0
-        ? `<span class="badge more-badge">📚 ${missing} more in series</span>`
-        : "";
-      return `
-      <article class="book-card" data-id="${esc(b.id)}">
-        <img class="cover" src="${esc(b.coverUrl ?? "")}" alt=""
-             onerror="this.classList.add('no-cover')" loading="lazy" />
-        <div class="book-info">
-          <h3>${esc(b.title)}</h3>
-          <p class="authors">${esc((b.authors ?? []).join(", "))}</p>
-          <p class="edition">
-            ${esc([b.format, b.publisher, b.publishDate].filter(Boolean).join(" · "))}
-          </p>
-          <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
-          ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
-          <div class="badges">
-            ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
-            ${seriesBadge}${moreBadge}
-          </div>
-        </div>
-      </article>`;
-    })
+    .map((b) => (viewMode === "grid" ? gridCard(b, showNames) : listCard(b, showNames)))
     .join("");
 
   // Kick off background series checks for owned books we haven't checked yet.
   books.forEach((b) => {
     if (!seriesCache.has(b.id)) checkSeriesInBackground(b);
   });
+}
+
+function missingInSeries(b) {
+  return seriesCache.get(b.id)?.missingCount ?? 0;
+}
+
+function gridCard(b, showNames) {
+  const rating = myRating(b);
+  const missing = missingInSeries(b);
+  return `
+    <article class="grid-book" data-id="${esc(b.id)}" title="${esc(b.title)}">
+      ${coverHtml(b)}
+      <div>
+        <p class="grid-title">${esc(b.title)}</p>
+        <p class="grid-author">${esc((b.authors ?? []).join(", "))}</p>
+      </div>
+      <div class="grid-meta">
+        ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
+        ${missing ? `<span class="mini-badge" title="${missing} more in this series">+${missing}</span>` : ""}
+        ${showNames && b.profile ? `<span class="mini-badge who">${esc(b.profile[0])}</span>` : ""}
+      </div>
+    </article>`;
+}
+
+function listCard(b, showNames) {
+  const rating = myRating(b);
+  const missing = missingInSeries(b);
+  const seriesBadge = b.series?.name
+    ? `<span class="badge series-badge" title="Part of the ${esc(b.series.name)} series">
+         ${esc(b.series.name)}${b.series.position ? " #" + b.series.position : ""}
+       </span>`
+    : "";
+  const moreBadge = missing > 0
+    ? `<span class="badge more-badge">📚 ${missing} more in series</span>`
+    : "";
+  return `
+    <article class="book-card" data-id="${esc(b.id)}">
+      ${coverHtml(b)}
+      <div class="book-info">
+        <h3>${esc(b.title)}</h3>
+        <p class="authors">${esc((b.authors ?? []).join(", "))}</p>
+        <p class="edition">
+          ${esc([b.format, b.publisher, b.publishDate].filter(Boolean).join(" · "))}
+        </p>
+        <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
+        ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
+        <div class="badges">
+          ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
+          ${seriesBadge}${moreBadge}
+        </div>
+      </div>
+    </article>`;
 }
 
 async function checkSeriesInBackground(book) {
@@ -206,6 +258,35 @@ document.querySelectorAll(".tab").forEach((tab) => {
 $("#list-search").addEventListener("input", (e) => {
   searchQuery = e.target.value;
   renderShelf();
+});
+
+// ---------- view mode ----------
+
+function updateViewToggle() {
+  const btn = $("#view-toggle");
+  // Show the icon of the view you'd switch *to*.
+  btn.textContent = viewMode === "grid" ? "▤" : "▦";
+  btn.title = viewMode === "grid" ? "Switch to list view" : "Switch to shelf view";
+}
+
+$("#view-toggle").addEventListener("click", () => {
+  viewMode = viewMode === "grid" ? "list" : "grid";
+  localStorage.setItem(VIEW_KEY, viewMode);
+  updateViewToggle();
+  renderShelf();
+});
+
+$("#empty-action").addEventListener("click", (e) => {
+  if (e.currentTarget.dataset.action === "clear") {
+    shelfFilter = emptyFilter();
+    shelfSort = "added";
+    searchQuery = "";
+    $("#list-search").value = "";
+    if (!$("#filter-panel").classList.contains("hidden")) renderFilterPanel();
+    renderShelf();
+  } else {
+    addModal.showModal();
+  }
 });
 
 // ---------- filter & sort panel ----------
@@ -334,7 +415,9 @@ function renderProfileFilter(show) {
 const profileModal = $("#profile-modal");
 
 function updateProfileChip() {
-  $("#profile-chip").textContent = "👤 " + (currentProfile() ?? "Set profile");
+  const me = currentProfile();
+  $("#profile-avatar").textContent = me ? me[0].toUpperCase() : "?";
+  $("#profile-name").textContent = me ?? "Set profile";
 }
 
 $("#profile-chip").addEventListener("click", () => {
@@ -537,8 +620,7 @@ function showNextPendingBook() {
     return;
   }
   $("#confirm-book").innerHTML = `
-    <img class="cover" src="${esc(book.coverUrl ?? "")}" alt=""
-         onerror="this.classList.add('no-cover')" />
+    ${coverHtml(book)}
     <div>
       <h3>${esc(book.title)}</h3>
       ${book.subtitle ? `<p class="subtitle">${esc(book.subtitle)}</p>` : ""}
@@ -583,7 +665,7 @@ confirmModal.addEventListener("close", () => {
 // ---------- detail view ----------
 
 bookList.addEventListener("click", (e) => {
-  const card = e.target.closest(".book-card");
+  const card = e.target.closest("[data-id]");
   if (card) openDetail(card.dataset.id);
 });
 
@@ -605,8 +687,7 @@ async function openDetail(id) {
 
   $("#detail-content").innerHTML = `
     <div class="confirm-book">
-      <img class="cover" src="${esc(b.coverUrl ?? "")}" alt=""
-           onerror="this.classList.add('no-cover')" />
+      ${coverHtml(b)}
       <div>
         <h3>${esc(b.title)}</h3>
         ${b.subtitle ? `<p class="subtitle">${esc(b.subtitle)}</p>` : ""}
@@ -971,18 +1052,242 @@ function renderRecs(el, recs) {
   );
 }
 
-// ---------- export / import ----------
+// ---------- export ----------
+
+const exportModal = $("#export-modal");
+let exportScope = null;      // shelf key, or "all"
+let exportUseView = true;    // honour the current search/filters/profile view
 
 $("#export-btn").addEventListener("click", () => {
-  const blob = new Blob([db.exportJson()], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "shelfie-library.json";
-  a.click();
-  URL.revokeObjectURL(a.href);
+  exportScope = currentShelf;
+  exportUseView = true;
+  renderExportModal();
+  exportModal.showModal();
 });
 
-$("#import-btn").addEventListener("click", () => $("#import-input").click());
+function exportBooks() {
+  if (exportScope === "all") return db.getAllBooks();
+  if (exportScope === currentShelf && exportUseView) return visibleBooks;
+  return db.getBooksOnShelf(exportScope);
+}
+
+function exportTitle() {
+  return exportScope === "all" ? "My Library" : `${SHELF_LABEL[exportScope]} shelf`;
+}
+
+function renderExportModal() {
+  const el = $("#export-content");
+  const books = exportBooks();
+  const scopes = [...SHELVES.map((s) => [s, `${SHELF_ICON[s]} ${SHELF_LABEL[s]}`]), ["all", "📚 Everything"]];
+  const canFilter = exportScope === currentShelf;
+
+  el.innerHTML = `
+    <div class="filter-group">
+      <span class="filter-label">What to export</span>
+      <div class="profile-filter">
+        ${scopes
+          .map(([v, label]) =>
+            `<button class="filter-chip ${exportScope === v ? "active" : ""}" data-scope="${v}">${label}</button>`)
+          .join("")}
+      </div>
+    </div>
+    ${canFilter
+      ? `<label class="check-row">
+           <input type="checkbox" id="export-view-check" ${exportUseView ? "checked" : ""} />
+           Only what's showing (current search, filters &amp; profile view)
+         </label>`
+      : ""}
+    <div class="export-preview">
+      <strong>${esc(exportTitle())}</strong><br />
+      ${books.length ? esc(xport.summaryLine(books)) : "No books in this selection."}
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Format</span>
+      <div class="format-grid">
+        <button class="method-btn" data-format="page" ${books.length ? "" : "disabled"}>
+          <span class="method-icon">📄</span>
+          <span class="method-label">Printable page</span>
+          <span class="method-hint">Opens a styled page you can print or save as PDF</span>
+        </button>
+        <button class="method-btn" data-format="text" ${books.length ? "" : "disabled"}>
+          <span class="method-icon">💬</span>
+          <span class="method-label">Share as text</span>
+          <span class="method-hint">A tidy list to text or email</span>
+        </button>
+        <button class="method-btn" data-format="csv" ${books.length ? "" : "disabled"}>
+          <span class="method-icon">📊</span>
+          <span class="method-label">Spreadsheet</span>
+          <span class="method-hint">CSV for Excel or Google Sheets</span>
+        </button>
+        <button class="method-btn" data-format="json">
+          <span class="method-icon">💾</span>
+          <span class="method-label">Backup</span>
+          <span class="method-hint">Full JSON of the whole library</span>
+        </button>
+      </div>
+    </div>
+    <p class="export-note" id="export-status">Covers and ratings are included in the printable page.</p>`;
+
+  el.querySelectorAll("[data-scope]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      exportScope = btn.dataset.scope;
+      renderExportModal();
+    })
+  );
+  $("#export-view-check")?.addEventListener("change", (e) => {
+    exportUseView = e.target.checked;
+    renderExportModal();
+  });
+  el.querySelectorAll("[data-format]").forEach((btn) =>
+    btn.addEventListener("click", () => runExport(btn.dataset.format))
+  );
+}
+
+async function runExport(format) {
+  const books = exportBooks();
+  const title = exportTitle();
+  const name = xport.slug(exportScope === "all" ? "library" : SHELF_LABEL[exportScope]);
+  const status = (msg) => ($("#export-status").textContent = msg);
+  const who = currentProfile();
+  const subtitle = [who ? `${who}'s shelves` : null, sync.isActive() ? "shared household" : null]
+    .filter(Boolean)
+    .join(" · ");
+
+  if (format === "page") {
+    const html = xport.buildPrintableHtml(books, { title, subtitle, ratingOf: myRating });
+    const opened = xport.openHtml(html, `shelfie-${name}.html`);
+    status(
+      opened
+        ? "Opened in a new tab — use your browser's Share or Print menu to save it as a PDF."
+        : "Downloaded as an HTML file (your browser blocked the new tab)."
+    );
+    return;
+  }
+
+  if (format === "text") {
+    const text = xport.buildText(books, title, myRating);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Shelfie — ${title}`, text });
+        status("Shared.");
+        return;
+      } catch {
+        /* user dismissed the share sheet — fall through to clipboard */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      status("Copied to your clipboard — paste it anywhere.");
+    } catch {
+      xport.download(`shelfie-${name}.txt`, text, "text/plain");
+      status("Downloaded as a text file.");
+    }
+    return;
+  }
+
+  if (format === "csv") {
+    xport.download(`shelfie-${name}.csv`, xport.buildCsv(books, myRating), "text/csv");
+    status("Spreadsheet downloaded.");
+    return;
+  }
+
+  xport.download("shelfie-library-backup.json", db.exportJson(), "application/json");
+  status("Backup downloaded — keep it somewhere safe.");
+}
+
+// ---------- settings ----------
+
+const settingsModal = $("#settings-modal");
+
+$("#settings-btn").addEventListener("click", () => {
+  renderSettingsModal();
+  settingsModal.showModal();
+});
+
+function currentTheme() {
+  return localStorage.getItem(THEME_KEY) ?? "auto";
+}
+
+function applyTheme(theme) {
+  if (theme === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+function renderSettingsModal() {
+  const el = $("#settings-content");
+  const me = currentProfile();
+  const household = sync.isActive() ? sync.currentHousehold() : null;
+  const theme = currentTheme();
+
+  el.innerHTML = `
+    <div class="settings-section">
+      <button class="settings-row" data-go="profile">
+        <span class="row-main">
+          <span class="row-icon">👤</span>
+          <span>Profile
+            <span class="row-sub">${me ? esc(me) : "Not set — tap to choose"}</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
+      <button class="settings-row" data-go="sync">
+        <span class="row-main">
+          <span class="row-icon">👩‍❤️‍👨</span>
+          <span>Shared library
+            <span class="row-sub">${
+              household ? "On · " + esc(household) : sync.isConfigured() ? "Off" : "Needs setup"
+            }</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
+      <button class="settings-row" data-go="import">
+        <span class="row-main">
+          <span class="row-icon">📥</span>
+          <span>Restore from backup
+            <span class="row-sub">Load a Shelfie JSON export</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Appearance</span>
+      <div class="seg" style="margin-top:0.45rem">
+        ${[["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]
+          .map(([v, label]) =>
+            `<button class="filter-chip ${theme === v ? "active" : ""}" data-theme="${v}">${label}</button>`)
+          .join("")}
+      </div>
+    </div>
+
+    <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
+
+  el.querySelectorAll("[data-theme]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      applyTheme(btn.dataset.theme);
+      renderSettingsModal();
+    })
+  );
+  el.querySelectorAll("[data-go]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.go;
+      settingsModal.close();
+      if (target === "profile") {
+        renderProfileModal();
+        profileModal.showModal();
+      } else if (target === "sync") {
+        renderSyncModal();
+        syncModal.showModal();
+      } else {
+        $("#import-input").click();
+      }
+    })
+  );
+}
+
 $("#import-input").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
@@ -991,9 +1296,17 @@ $("#import-input").addEventListener("change", async (e) => {
     db.importJson(await file.text());
     seriesCache.clear();
     renderShelf();
+    alert("Library restored.");
   } catch (err) {
     alert("Import failed: " + err.message);
   }
+});
+
+// ---------- bottom nav ----------
+
+$("#nav-shelves").addEventListener("click", () => {
+  document.querySelectorAll("dialog[open]").forEach((d) => d.close());
+  window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
 // ---------- shared library (sync) ----------
@@ -1018,11 +1331,6 @@ function updateSyncIndicator() {
   dot.classList.toggle("error", !!syncError);
   dot.title = syncError ? "Sync error: " + syncError : "Sync on";
 }
-
-$("#sync-btn").addEventListener("click", () => {
-  renderSyncModal();
-  syncModal.showModal();
-});
 
 function renderSyncModal() {
   const el = $("#sync-content");
@@ -1129,6 +1437,8 @@ async function backfillSubjects() {
 }
 
 // ---------- init ----------
+applyTheme(currentTheme());
+updateViewToggle();
 updateProfileChip();
 renderShelf();
 initSync();

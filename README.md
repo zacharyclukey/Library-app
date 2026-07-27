@@ -41,6 +41,13 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked
   ✅ owned / ◻️ not owned.
+- **Two ways to browse** — a cover-forward shelf grid (with spine-styled fallback
+  covers for books with no jacket art) or a detailed list, plus light/dark/auto
+  themes and a bottom navigation bar.
+- **Exports per shelf** 📤 — export any shelf (or everything, optionally limited to
+  what your filters are showing) as a printable/shareable page with covers and
+  stats, a plain-text list for messaging, a CSV for spreadsheets, or a full JSON
+  backup.
 - **Your data stays yours** — everything is stored in your browser's localStorage,
   with JSON export/import for backup or moving devices.
 - **Optional shared library** 👩‍❤️‍👨 — link two or more phones into one live
@@ -78,10 +85,13 @@ popular series, spottier for obscure ones).
 ## Project layout
 
 ```
-index.html        app shell (shelves, add/confirm/detail modals)
-css/styles.css    styling
+index.html        app shell (shelf tabs, bottom nav, modals)
+css/styles.css    design tokens, light/dark themes, layouts
 js/app.js         UI logic and state
 js/db.js          localStorage persistence
 js/api.js         Open Library / Google Books lookups + series detection
+js/filters.js     genre mapping, filter predicates, sort orders
+js/export.js      printable page / text / CSV / JSON exports
+js/sync.js        optional shared-household sync (Firebase)
 js/scanner.js     camera + photo barcode scanning
 ```
