@@ -70,6 +70,20 @@ function trackMedium() {
   return localStorage.getItem(MEDIUM_KEY) === "1";
 }
 
+// Ask the browser to shield this site's data from automatic eviction.
+// Defaults to on (losing the library to cache cleanup is the worse
+// surprise); the Settings toggle stops future requests. Browsers offer no
+// API to revoke an already-granted protection, so the UI says so.
+const PERSIST_KEY = "shelfie.persistStorage.v1";
+
+function persistPref() {
+  return localStorage.getItem(PERSIST_KEY) !== "0";
+}
+
+function requestPersistence() {
+  if (persistPref()) navigator.storage?.persist?.().catch(() => {});
+}
+
 const VIEW_KEY = "shelfie.view.v1";
 let viewMode = localStorage.getItem(VIEW_KEY) ?? "grid";
 
@@ -1378,6 +1392,15 @@ function renderSettingsModal() {
         </span>
         <span class="row-go">${trackMedium() ? "On" : "Off"}</span>
       </button>
+      <button class="settings-row" id="persist-toggle">
+        <span class="row-main">
+          <span class="row-icon">🛡️</span>
+          <span>Protect data from cleanup
+            <span class="row-sub" id="persist-status">Checking…</span>
+          </span>
+        </span>
+        <span class="row-go">${persistPref() ? "On" : "Off"}</span>
+      </button>
     </div>
 
     <div class="settings-section">
@@ -1405,6 +1428,18 @@ function renderSettingsModal() {
     </div>
 
     <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
+
+  updatePersistStatus();
+  $("#persist-toggle").addEventListener("click", async () => {
+    const next = !persistPref();
+    localStorage.setItem(PERSIST_KEY, next ? "1" : "0");
+    if (next) {
+      try {
+        await navigator.storage?.persist?.();
+      } catch { /* status line reports the outcome */ }
+    }
+    renderSettingsModal();
+  });
 
   $("#medium-toggle").addEventListener("click", () => {
     const next = !trackMedium();
@@ -1443,6 +1478,27 @@ function renderSettingsModal() {
       }
     })
   );
+}
+
+// The status line reports what's actually true, not just the preference:
+// persistence can be requested but not yet granted, and once granted the
+// browser offers no way to hand it back.
+async function updatePersistStatus() {
+  const el = $("#persist-status");
+  if (!el) return;
+  let granted = false;
+  try {
+    granted = (await navigator.storage?.persisted?.()) ?? false;
+  } catch { /* treat as not granted */ }
+  if (persistPref()) {
+    el.textContent = granted
+      ? "The browser won't auto-delete your library"
+      : "Requested — browsers grant this to apps installed on the home screen or used often";
+  } else {
+    el.textContent = granted
+      ? "Off — but protection already granted; browsers keep it until site data is cleared"
+      : "Off — the browser may clear the library if the app goes unused";
+  }
 }
 
 $("#import-input").addEventListener("change", async (e) => {
@@ -1900,9 +1956,7 @@ async function backfillSubjects() {
 }
 
 // ---------- init ----------
-// Ask the browser to protect this site's storage from eviction — without it,
-// iOS in particular treats the library as disposable cache.
-navigator.storage?.persist?.().catch(() => {});
+requestPersistence();
 themes.apply();
 themes.watchSystem(() => {
   if (settingsModal.open) renderSettingsModal();
