@@ -36,7 +36,7 @@ let searchQuery = "";
 
 const emptyFilter = () =>
   ({ genre: null, pages: null, series: null, age: null, format: null, rated: null,
-     status: null, content: null, spice: null });
+     status: null, content: null, spice: null, language: null });
 let shelfFilter = emptyFilter();
 let shelfSort = "added";
 
@@ -540,6 +540,15 @@ function renderFilterPanel() {
   if (currentShelf === "tbr" || currentShelf === "owned") {
     panel.appendChild(chipGroup("Status", flt.STATUS_OPTIONS, shelfFilter.status, set("status")));
   }
+  const langs = [...new Set(db.getAllBooks().map((b) => flt.canonLang(b.language)).filter(Boolean))];
+  if (langs.length >= 2) {
+    panel.appendChild(chipGroup(
+      "Language",
+      langs.sort().map((c) => [c, flt.langLabel(c)]),
+      shelfFilter.language,
+      set("language")
+    ));
+  }
   if (trackContent()) {
     panel.appendChild(chipGroup("Content", flt.CONTENT_OPTIONS, shelfFilter.content, set("content")));
     panel.appendChild(chipGroup("Spice", flt.SPICE_OPTIONS, shelfFilter.spice, set("spice")));
@@ -771,12 +780,22 @@ $("#isbn-form").addEventListener("submit", async (e) => {
   $("#isbn-input").value = "";
 });
 
+const LANG_KEY = "shelfie.searchLang.v1";
+{
+  const sel = $("#search-lang");
+  sel.innerHTML = flt.SEARCH_LANGS
+    .map(([v, label]) => `<option value="${v}">${label}</option>`)
+    .join("");
+  sel.value = localStorage.getItem(LANG_KEY) ?? "eng";
+  sel.addEventListener("change", () => localStorage.setItem(LANG_KEY, sel.value));
+}
+
 $("#title-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const q = $("#title-input").value.trim();
   if (!q) return;
   scanStatus.textContent = "Searching…";
-  const results = await api.searchByTitle(q);
+  const results = await api.searchByTitle(q, { language: $("#search-lang").value });
   scanStatus.textContent = results.length
     ? `${results.length} match${results.length === 1 ? "" : "es"} — scroll for more.`
     : "No matches found.";
@@ -787,7 +806,9 @@ $("#title-form").addEventListener("submit", async (e) => {
         ${r.coverUrl ? `<img src="${esc(r.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
         <span>
           <strong>${esc(r.title)}</strong><br />
-          <small>${esc(r.authors.join(", "))}${r.year ? " · " + r.year : ""}</small>
+          <small>${esc(r.authors.join(", "))}${r.year ? " · " + r.year : ""}${
+            r.language && flt.canonLang(r.language) !== flt.canonLang($("#search-lang").value)
+              ? ` · <em>${esc(flt.langLabel(r.language))}</em>` : ""}</small>
         </span>
       </button>`
     )
@@ -807,6 +828,7 @@ $("#title-form").addEventListener("submit", async (e) => {
           coverUrl: r.coverUrl?.replace("-S.jpg", "-M.jpg") ?? null,
           isbn13: null, isbn10: null, publisher: null, publishDate: null,
           pageCount: null, format: null, editionKey: null, series: null,
+          language: r.language ?? null,
         };
       }
       scanStatus.textContent = "";
@@ -912,6 +934,7 @@ async function openDetail(id) {
       ? [["Copy", MEDIA[b.medium ?? "print"] + (b.owned ? " · owned" : " · not owned")]]
       : []),
     ["Format", b.format],
+    ["Language", b.language ? flt.langLabel(b.language) : null],
     ["Publisher", b.publisher],
     ["Published", b.publishDate],
     ["Pages", b.pageCount],

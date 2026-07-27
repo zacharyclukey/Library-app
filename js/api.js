@@ -91,6 +91,7 @@ async function fetchOpenLibraryEdition(isbn) {
     series: parseOlSeries(ed.series),
     // Edition-level subject tags feed genre filters and content auto-tagging.
     subjects: (ed.subjects ?? []).filter((x) => typeof x === "string"),
+    language: ed.languages?.[0]?.key?.replace("/languages/", "") ?? null,
   };
 }
 
@@ -164,6 +165,7 @@ function googleVolumeToBook(item, fallbackIsbn) {
     coverUrl: v.imageLinks?.thumbnail?.replace("http://", "https://") ?? null,
     series,
     subjects: v.categories ?? [],
+    language: v.language ?? null, // 2-letter; normalized by filters.canonLang
     // Google's coarse content flag ("MATURE" / "NOT_MATURE") — the only
     // free audience-rating signal any book API provides.
     maturity: v.maturityRating ?? null,
@@ -172,20 +174,38 @@ function googleVolumeToBook(item, fallbackIsbn) {
 
 // ---------- Title search (manual fallback) ----------
 
-export async function searchByTitle(query, limit = 40) {
-  const res = await fetch(
-    `${OL}/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,first_publish_year,cover_i,isbn,editions&limit=${limit}`
-  );
+// Maps OL's 3-letter language codes to the 2-letter form its `lang`
+// relevance parameter expects.
+const LANG2 = { eng: "en", spa: "es", fre: "fr", ger: "de", ita: "it", por: "pt", jpn: "ja" };
+
+export async function searchByTitle(query, { limit = 40, language = "eng" } = {}) {
+  // `language:` constrains to works with an edition in that language, and
+  // `lang=` makes OL surface that edition (title, ISBNs, cover) as the
+  // preferred one — so an English search stops returning Spanish editions.
+  const restrict = language && language !== "any";
+  const q = restrict ? `${query} language:${language}` : query;
+  const fields =
+    "key,title,author_name,first_publish_year,cover_i,isbn,language," +
+    "editions,editions.key,editions.title,editions.isbn,editions.language,editions.cover_i";
+  const url =
+    `${OL}/search.json?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}` +
+    `&limit=${limit}` + (restrict ? `&lang=${LANG2[language] ?? "en"}` : "");
+  const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
-  return (data.docs ?? []).map((d) => ({
-    workKey: d.key,
-    title: d.title,
-    authors: d.author_name ?? [],
-    year: d.first_publish_year ?? null,
-    coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-S.jpg` : null,
-    isbns: d.isbn ?? [],
-  }));
+  return (data.docs ?? []).map((d) => {
+    const ed = d.editions?.docs?.[0]; // OL's best edition for the requested language
+    const cover = ed?.cover_i ?? d.cover_i;
+    return {
+      workKey: d.key,
+      title: ed?.title ?? d.title,
+      authors: d.author_name ?? [],
+      year: d.first_publish_year ?? null,
+      coverUrl: cover ? `https://covers.openlibrary.org/b/id/${cover}-S.jpg` : null,
+      isbns: ed?.isbn ?? d.isbn ?? [],
+      language: ed?.language?.[0] ?? d.language?.[0] ?? null,
+    };
+  });
 }
 
 // ---------- Recommendations ----------

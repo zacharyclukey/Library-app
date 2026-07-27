@@ -58,6 +58,11 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   shelf stays shared. Books can be reassigned from their detail view, and each
   person's star ratings are tracked separately.
 - **Shelf search** 🔎 — filter the current shelf by title or author as you type.
+- **Language-aware** 🌐 — title/author search asks Open Library for the best
+  edition in your chosen language (default English, switchable per search, so
+  Spanish translations stop sneaking in), each book records its edition's
+  language, and a Language filter appears on shelves whenever the library
+  spans more than one.
 - **Filters & sorting** ⚙️ — filter any shelf by genre (derived from Open Library
   subject tags), length (a dual-thumb page-count slider), series vs standalone,
   publication age, format, and rating status; sort by date added, title, author,

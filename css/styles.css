@@ -1104,6 +1104,18 @@ img.cover.missing { display: none; }
   color: var(--ink);
 }
 .inline-form input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.lang-select {
+  flex: none;
+  max-width: 6.5rem;
+  padding: 0.55rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: var(--card);
+  color: var(--ink);
+}
+.search-result em { color: var(--gold-ink); font-style: normal; font-weight: 600; }
 
 /* ---------- buttons ---------- */
 

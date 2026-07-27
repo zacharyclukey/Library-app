@@ -141,6 +141,30 @@ export function suggestContent(book) {
   if (/young adult|teen fiction/i.test(hay)) return { content: "teen" };
   return {};
 }
+// Language codes arrive in two shapes (OL 3-letter, Google 2-letter);
+// canonicalize to OL's for comparison and display.
+const LANG_ALIAS = {
+  en: "eng", es: "spa", fr: "fre", de: "ger", it: "ita",
+  pt: "por", ja: "jpn", zh: "chi", ru: "rus", ko: "kor",
+};
+const LANG_NAMES = {
+  eng: "English", spa: "Spanish", fre: "French", ger: "German", ita: "Italian",
+  por: "Portuguese", jpn: "Japanese", chi: "Chinese", rus: "Russian", kor: "Korean",
+};
+export const SEARCH_LANGS = [
+  ["eng", "English"], ["spa", "Spanish"], ["fre", "French"], ["ger", "German"],
+  ["ita", "Italian"], ["por", "Portuguese"], ["jpn", "Japanese"], ["any", "Any language"],
+];
+export function canonLang(code) {
+  if (!code) return null;
+  const c = String(code).toLowerCase();
+  return LANG_ALIAS[c] ?? c;
+}
+export function langLabel(code) {
+  const c = canonLang(code);
+  return LANG_NAMES[c] ?? (c ?? "").toUpperCase();
+}
+
 export const RATED_OPTIONS = [
   ["4plus", "Rated 4★+"],
   ["unrated", "Unrated"],
@@ -166,6 +190,7 @@ export function matchesFilter(book, f, opts = {}) {
   if (f.format === "ebook" && book.medium !== "ebook") return false;
   if (f.format === "audio" && book.medium !== "audio") return false;
   if (f.status === "reading" && !book.reading) return false;
+  if (f.language && canonLang(book.language) !== f.language) return false;
   if (f.content === "sfw" && ["mature", "explicit"].includes(book.content)) return false;
   if (f.content && f.content !== "sfw" && book.content !== f.content) return false;
   if (f.spice === "any" && !((book.spice ?? 0) > 0)) return false;
@@ -177,7 +202,7 @@ export function matchesFilter(book, f, opts = {}) {
 }
 
 export function activeFilterCount(f) {
-  const chips = ["genre", "series", "age", "format", "rated", "status", "content", "spice"]
+  const chips = ["genre", "series", "age", "format", "rated", "status", "content", "spice", "language"]
     .filter((k) => f[k]).length;
   return chips + (isFullPageRange(f.pages) ? 0 : 1);
 }
