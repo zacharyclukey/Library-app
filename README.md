@@ -63,10 +63,13 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   Spanish translations stop sneaking in), each book records its edition's
   language, and a Language filter appears on shelves whenever the library
   spans more than one.
-- **Filters & sorting** ⚙️ — filter any shelf by genre (derived from Open Library
-  subject tags), length (a dual-thumb page-count slider), series vs standalone,
-  publication age, format, and rating status; sort by date added, title, author,
-  publish year, length, or your rating.
+- **Sorting & filters** ⚙️ — the **Sort** button opens with the sort orders
+  first: date added, title, author, publish year, length, your rating, or
+  **📚 Series, grouped**, which stacks the shelf under series headings with
+  standalones last (remembered per device). Below that, filter any shelf by
+  genre (derived from Open Library subject tags), length (a dual-thumb
+  page-count slider), series vs standalone, publication age, format, and
+  rating status.
 - **Discover** ✨ — free recommendations built from your shelves, scored on
   **style first**: how much a book's subjects overlap your taste, author
   affinity, and corroboration across several taste signals. Reader ratings are a
@@ -87,8 +90,10 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 - **Tap for the book page, flip for quick actions** 🔄 — tapping a card opens its
   full detail sheet; the **⋯** button (or a long press) flips the cover over to
   a quick panel with the common facts, a rating, currently-reading, and shelf
-  moves. Every action shows a toast with **Undo**, so nothing needs a
-  confirmation popup.
+  moves. Every action is **labelled in words**, and a shelf move takes two
+  taps — the first arms the button ("Sure?"), which disarms on its own after a
+  few seconds — so a book never moves by accident. Every action then shows a
+  toast with **Undo**, so nothing needs a confirmation popup.
 - **Themed icon set** — icons are inline SVG drawn in `currentColor`, and each
   aesthetic sets its own hand via `--icon-stroke` / `--icon-cap`: Reading Room
   soft and heavier, Cottage rounded, Dark Academia finely engraved, Modern thin

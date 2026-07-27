@@ -62,9 +62,16 @@ const emptyFilter = () =>
   ({ genre: null, pages: null, series: null, age: null, format: null, rated: null,
      status: null, content: null, spice: null, language: null });
 let shelfFilter = emptyFilter();
-let shelfSort = "added";
-const GROUP_KEY = "shelfie.groupSeries.v1";
-let groupBySeries = localStorage.getItem(GROUP_KEY) === "1";
+// Sort is remembered per device, and "series" doubles as the grouping mode:
+// picking it is what puts the shelf under series headings.
+const SORT_KEY = "shelfie.shelfSort.v1";
+let shelfSort = localStorage.getItem(SORT_KEY) ?? "added";
+const groupBySeries = () => shelfSort === "series";
+
+function setSort(value) {
+  shelfSort = value;
+  localStorage.setItem(SORT_KEY, value);
+}
 
 function currentProfile() {
   return localStorage.getItem(PROFILE_KEY);
@@ -505,8 +512,9 @@ function renderShelf() {
   $("#shelf-summary").textContent = books.length ? xport.summaryLine(books) : "";
 
   bookList.className = "book-list " + viewMode;
+  disarmQuickAction();
   bookList.innerHTML = "";
-  renderQueue = groupBySeries ? groupIntoSeries(books) : books.slice();
+  renderQueue = groupBySeries() ? groupIntoSeries(books) : books.slice();
   renderShowNames = allProfiles().length > 1;
   renderChunk();
   renderAzRail(books);
@@ -629,7 +637,7 @@ function initialOf(b) {
 
 function renderAzRail(books) {
   const rail = $("#az-rail");
-  const useful = !groupBySeries && ["title", "author"].includes(shelfSort) && books.length >= 25;
+  const useful = !groupBySeries() && ["title", "author"].includes(shelfSort) && books.length >= 25;
   rail.classList.toggle("hidden", !useful);
   if (!useful) return;
 
@@ -652,6 +660,15 @@ function renderAzRail(books) {
 
 function missingInSeries(b) {
   return seriesCache.get(b.id)?.missingCount ?? 0;
+}
+
+// Every quick action says what it does in words — an icon alone is a guess,
+// and a mis-tap here moves a book off the shelf you were looking at. A cover
+// is too narrow for an icon *and* a readable label, so the words win.
+function qaButton({ attr, label, on = false }) {
+  return `<button class="qa-btn${on ? " on" : ""}" ${attr} title="${esc(label)}">
+            <span class="qa-label">${esc(label)}</span>
+          </button>`;
 }
 
 function gridCard(b, showNames) {
@@ -679,14 +696,16 @@ function gridCard(b, showNames) {
           </div>
           <div class="qa-row">
             ${b.shelf === "tbr" || b.shelf === "owned"
-              ? `<button class="qa-btn ${b.reading ? "on" : ""}" data-qa-reading title="Currently reading">${icon("bookOpen")}</button>`
+              ? qaButton({ attr: "data-qa-reading",
+                           label: b.reading ? "Stop" : "Reading",
+                           on: b.reading })
               : ""}
             ${b.shelf !== "completed"
-              ? `<button class="qa-btn" data-qa-move="completed" title="Move to Finished">${icon("check")}</button>` : ""}
+              ? qaButton({ attr: 'data-qa-move="completed"', label: "Finished" }) : ""}
             ${b.shelf !== "tbr"
-              ? `<button class="qa-btn" data-qa-move="tbr" title="Move to To Read">${icon("bookmark")}</button>` : ""}
+              ? qaButton({ attr: 'data-qa-move="tbr"', label: "To read" }) : ""}
             ${b.shelf !== "wishlist"
-              ? `<button class="qa-btn" data-qa-move="wishlist" title="Move to Wishlist">${icon("gift")}</button>` : ""}
+              ? qaButton({ attr: 'data-qa-move="wishlist"', label: "Wishlist" }) : ""}
           </div>
           <button class="qa-details" data-qa-details>Full details</button>
         </div>
@@ -823,7 +842,7 @@ $("#view-toggle").addEventListener("click", () => {
 $("#empty-action").addEventListener("click", (e) => {
   if (e.currentTarget.dataset.action === "clear") {
     shelfFilter = emptyFilter();
-    shelfSort = "added";
+    setSort("added");
     searchQuery = "";
     $("#list-search").value = "";
     if (!$("#filter-panel").classList.contains("hidden")) renderFilterPanel();
@@ -940,6 +959,34 @@ function renderFilterPanel() {
     renderShelf();
   };
 
+  // Sort leads the panel: it's what people open this for most, and picking
+  // "Series, grouped" is how the shelf gets series headings.
+  const sortWrap = document.createElement("div");
+  sortWrap.className = "filter-group sort-group";
+  sortWrap.innerHTML = `<span class="filter-label">Sort this shelf</span>`;
+  const sortRow = document.createElement("div");
+  sortRow.className = "profile-filter";
+  flt.SORT_OPTIONS.forEach(([value, text]) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-chip sort-chip" + (shelfSort === value ? " active" : "");
+    btn.dataset.sort = value;
+    btn.textContent = text;
+    btn.addEventListener("click", () => {
+      setSort(value);
+      renderFilterPanel();
+      renderShelf();
+    });
+    sortRow.appendChild(btn);
+  });
+  sortWrap.appendChild(sortRow);
+  if (groupBySeries()) {
+    const note = document.createElement("p");
+    note.className = "sort-note";
+    note.textContent = "Books are stacked under their series, standalones last.";
+    sortWrap.appendChild(note);
+  }
+  panel.appendChild(sortWrap);
+
   const genres = libraryGenres();
   if (genres.length) {
     panel.appendChild(
@@ -976,42 +1023,12 @@ function renderFilterPanel() {
     panel.appendChild(chipGroup("Spice", flt.SPICE_OPTIONS, shelfFilter.spice, set("spice")));
   }
 
-  panel.appendChild(
-    chipGroup("Group", [["series", "📚 By series"]], groupBySeries ? "series" : null, (v) => {
-      groupBySeries = !!v;
-      localStorage.setItem(GROUP_KEY, groupBySeries ? "1" : "0");
-      renderFilterPanel();
-      renderShelf();
-    })
-  );
-
-  const sortWrap = document.createElement("div");
-  sortWrap.className = "filter-group";
-  sortWrap.innerHTML = `<span class="filter-label">Sort by</span>`;
-  const select = document.createElement("select");
-  select.className = "sort-select";
-  flt.SORT_OPTIONS.forEach(([value, text]) => {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = text;
-    opt.selected = shelfSort === value;
-    select.appendChild(opt);
-  });
-  select.addEventListener("change", () => {
-    shelfSort = select.value;
-    renderShelf();
-  });
-  sortWrap.appendChild(select);
-  panel.appendChild(sortWrap);
-
   const clear = document.createElement("button");
   clear.className = "link-btn";
   clear.textContent = "Clear all filters";
   clear.addEventListener("click", () => {
     shelfFilter = emptyFilter();
-    shelfSort = "added";
-    groupBySeries = false;
-    localStorage.setItem(GROUP_KEY, "0");
+    setSort("added");
     renderFilterPanel();
     renderShelf();
   });
@@ -1382,6 +1399,8 @@ bookList.addEventListener("click", (e) => {
   const flip = card.querySelector(".flip");
   if (!flip) return openDetail(id);
 
+  if (!e.target.closest("[data-qa-move]")) disarmQuickAction();
+
   const rate = e.target.closest("[data-qa-rate]");
   if (rate) {
     const me = currentProfile() ?? "Me";
@@ -1405,6 +1424,10 @@ bookList.addEventListener("click", (e) => {
   const move = e.target.closest("[data-qa-move]");
   if (move) {
     const to = move.dataset.qaMove;
+    // Moving a book between shelves is the one quick action worth a beat of
+    // hesitation, so the first tap only arms it.
+    if (move.dataset.armed !== "1") return armQuickAction(move, "Sure?");
+    disarmQuickAction();
     undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
       db.updateBook(id, {
@@ -1430,7 +1453,39 @@ bookList.addEventListener("click", (e) => {
   openDetail(id);
 });
 
+// An armed button is one tap from moving a book, so it can never be left
+// armed behind your back: it disarms on any other tap, on flipping the card
+// away, and on its own after a few seconds.
+let armedBtn = null;
+let armedTimer = null;
+
+function armQuickAction(btn, prompt) {
+  disarmQuickAction();
+  armedBtn = btn;
+  btn.dataset.armed = "1";
+  btn.classList.add("armed");
+  const label = btn.querySelector(".qa-label");
+  if (label) {
+    btn.dataset.label = label.textContent;
+    label.textContent = prompt;
+  }
+  navigator.vibrate?.(6);
+  armedTimer = setTimeout(disarmQuickAction, 3500);
+}
+
+function disarmQuickAction() {
+  clearTimeout(armedTimer);
+  if (!armedBtn) return;
+  const label = armedBtn.querySelector(".qa-label");
+  if (label && armedBtn.dataset.label) label.textContent = armedBtn.dataset.label;
+  armedBtn.classList.remove("armed");
+  delete armedBtn.dataset.armed;
+  delete armedBtn.dataset.label;
+  armedBtn = null;
+}
+
 function setFlipped(flip, id, on) {
+  disarmQuickAction();
   flip.classList.toggle("flipped", on);
   if (on) flippedIds.add(id);
   else flippedIds.delete(id);

@@ -211,6 +211,7 @@ export function activeFilterCount(f) {
 
 export const SORT_OPTIONS = [
   ["added", "Recently added"],
+  ["series", "📚 Series, grouped"],
   ["title", "Title A–Z"],
   ["author", "Author A–Z"],
   ["newest", "Newest published"],
@@ -232,6 +233,12 @@ export function sortBooks(books, sort, opts = {}) {
     longest: (a, b) => (b.pageCount ?? -1) - (a.pageCount ?? -1),
     shortest: (a, b) => (a.pageCount ?? 1e9) - (b.pageCount ?? 1e9),
     rating: (a, b) => rating(b) - rating(a),
+    // Series order is finished off by the grouping pass, which puts each
+    // series under its own heading; this just gets the books adjacent.
+    series: (a, b) =>
+      (a.series?.name ?? "~~").localeCompare(b.series?.name ?? "~~") ||
+      (a.series?.position ?? 99) - (b.series?.position ?? 99) ||
+      a.title.localeCompare(b.title),
   }[sort];
   return cmp ? [...books].sort(cmp) : books;
 }
