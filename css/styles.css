@@ -2147,6 +2147,55 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .screen-body p { font-size: 0.9rem; line-height: 1.6; }
 .screen-body a { color: var(--accent); }
 
+/* ---------- Friends ---------- */
+
+.code-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
+.friend-code {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed var(--accent-border);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+.friend-code.small {
+  flex: none;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  border-style: solid;
+  opacity: 0.75;
+}
+
+.friend-list, .feed-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.55rem; }
+.friend-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.7rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.friend-name { font-weight: 650; margin-right: auto; }
+.friend-badge { background: var(--green-soft); border-color: var(--green-border); color: var(--green); }
+
+.feed-list li {
+  padding: 0.7rem 0.8rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.feed-head { margin: 0 0 0.15rem; font-size: 0.8rem; display: flex; gap: 0.4rem; align-items: baseline; }
+.feed-when { margin-left: auto; color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+.feed-book { margin: 0; font-family: var(--serif); font-size: 0.95rem; }
+.feed-list .card-rating { font-size: 0.8rem; }
+.feed-list .other-review { margin: 0.4rem 0 0; }
+
 .settings-note {
   margin: 0.9rem 0 0;
   font-size: 0.75rem;

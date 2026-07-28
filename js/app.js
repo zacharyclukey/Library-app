@@ -5,6 +5,7 @@ import * as flt from "./filters.js";
 import * as xport from "./export.js";
 import * as themes from "./themes.js";
 import * as community from "./community.js";
+import * as social from "./social.js";
 import { icon } from "./icons.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 import { applyCustomAssets, refreshCustomAssets } from "./assets.js";
@@ -436,7 +437,7 @@ function undoable(message, book, apply) {
 // sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
 // stay as modals — they're short task flows on top of whatever you're doing.
 
-const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats"];
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends"];
 const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
 let currentScreen = "shelves";
 
@@ -453,7 +454,7 @@ function showScreen(name, { push = true } = {}) {
   );
 
   // Sub-screens keep their parent's nav item lit.
-  if (name === "profile" || name === "sync") $("#settings-btn").classList.add("active");
+  if (["profile", "sync", "friends"].includes(name)) $("#settings-btn").classList.add("active");
   if (name === "stats") $("#nav-shelves").classList.add("active");
 
   if (name === "discover") renderDiscover();
@@ -462,6 +463,7 @@ function showScreen(name, { push = true } = {}) {
   else if (name === "profile") renderProfileScreen();
   else if (name === "sync") renderSyncScreen();
   else if (name === "stats") renderStatsScreen();
+  else if (name === "friends") renderFriendsScreen();
 
   if (push && history.state?.screen !== name) {
     history.pushState({ screen: name }, "");
@@ -499,6 +501,8 @@ function shareToCommunity(id) {
   // Keep this reader's shelf fingerprint current so "readers like you"
   // recommendations have something to work with (debounced inside).
   community.publishShelf(db.getAllBooks().map((x) => community.bookKey(x)), me);
+  // And what the people following you see: your recent reading (debounced).
+  social.publishSoon(me);
 }
 
 // ---------- rendering ----------
@@ -711,6 +715,7 @@ function bulkMove(to) {
     });
     seriesCache.delete(b.id);
   }
+  social.publishSoon(currentProfile());
   const n = books.length;
   setSelectMode(false);
   navigator.vibrate?.(15);
@@ -1701,6 +1706,7 @@ bookList.addEventListener("click", (e) => {
         finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
         ...readHerePatch(b, to),
       });
+      social.publishSoon(currentProfile());
     });
     flippedIds.delete(id);
     renderShelf();
@@ -1831,6 +1837,7 @@ function wireReadMonth(book) {
       db.updateBook(book.id, { finishedAt: when.toISOString(), readHere: true });
       toast(`Read in ${MONTH_NAMES[Number(month.value)]} ${year.value}`);
     }
+    social.publishSoon(currentProfile());
     renderShelf();
   };
   month.addEventListener("change", apply);
@@ -2004,6 +2011,7 @@ async function openDetail(id) {
       undoable(`Moved to ${SHELF_LABEL[to]}`, b, () =>
         db.updateBook(id, { shelf: to, owned, reading, finishedAt, ...readHerePatch(b, to) })
       );
+      social.publishSoon(currentProfile());
       detailModal.close();
       renderShelf();
     })
@@ -2469,9 +2477,10 @@ async function buildRecommendations(books, f) {
   const authorTotal = Object.values(authorScore).reduce((a, b) => a + b, 0) || 1;
 
   const myKeys = books.map((b) => community.bookKey(b));
-  const [summaries, coRead] = await Promise.all([
+  const [summaries, coRead, friends] = await Promise.all([
     community.fetchSummaries(candidates.map((r) => community.bookKey(r))),
     community.coReadScores(myKeys),
+    social.socialScores(myKeys),
   ]);
 
   for (const r of candidates) {
@@ -2493,14 +2502,25 @@ async function buildRecommendations(books, f) {
     const key = community.bookKey(r);
     const cr = coRead.get(key);
     const cs = summaries.get(key);
+    const fr = friends.get(key);
     const communityRating = cs?.ratingCount
       ? ((cs.ratingAvg - 3) / 2) * Math.min(cs.ratingCount / 5, 1)
       : 0;
 
-    r.score = similarity + 0.6 * (cr?.score ?? 0) + 0.25 * quality + 0.3 * communityRating;
+    // People you actually know outrank every other social signal: a book a
+    // friend loved should surface ahead of one that strangers rate highly.
+    const known = (fr?.score ?? 0) * (fr?.friend ? 1.1 : 0.8);
 
-    // Say why, most specific signal first.
-    if (cr?.readers) {
+    r.score =
+      similarity + 1.2 * known + 0.6 * (cr?.score ?? 0) + 0.25 * quality + 0.3 * communityRating;
+
+    // Say why, most specific signal first — and nothing is more specific
+    // than a name you know.
+    if (fr?.who?.length) {
+      const names = fr.who.slice(0, 2).join(" and ");
+      const more = fr.who.length > 2 ? ` +${fr.who.length - 2}` : "";
+      r.reason = `${names}${more} read this`;
+    } else if (cr?.readers) {
       r.reason = `Readers with shelves like yours have this`;
     } else if (cs?.ratingCount) {
       r.reason = `Shelfie readers rate it ★ ${cs.ratingAvg.toFixed(1)}`;
@@ -2794,6 +2814,21 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
+      <button class="settings-row" data-go="friends">
+        <span class="row-main">
+          <span class="row-icon">${icon("sparkles")}</span>
+          <span>Friends
+            <span class="row-sub">${
+              !sync.isConfigured()
+                ? "Needs the shared-library setup"
+                : social.isEnabled()
+                  ? `On · following ${social.following().length}`
+                  : "Off"
+            }</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
       <button class="settings-row" data-go="stats">
         <span class="row-main">
           <span class="row-icon">${icon("books")}</span>
@@ -2947,6 +2982,7 @@ function renderSettingsScreen() {
       if (target === "profile") showScreen("profile");
       else if (target === "sync") showScreen("sync");
       else if (target === "stats") showScreen("stats");
+      else if (target === "friends") showScreen("friends");
       else $("#import-input").click();
     })
   );
@@ -3128,6 +3164,195 @@ function updateSyncIndicator() {
       : syncRequests.length
         ? `${syncRequests.length} join request${syncRequests.length === 1 ? "" : "s"} waiting`
         : "Sync on";
+}
+
+// ---------- friends ----------
+
+// Separate from timeAgo(), which reads a device's last-seen ("active now").
+// A book finished five minutes ago wasn't "active" — it was "just now".
+function whenRead(iso) {
+  const then = Date.parse(iso ?? "");
+  if (!then) return "";
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 60) return mins <= 1 ? "just now" : `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.round(days / 30);
+  return months < 12 ? `${months}mo ago` : `${Math.round(months / 12)}y ago`;
+}
+
+async function renderFriendsScreen() {
+  const el = $("#friends-content");
+
+  if (!social.isAvailable()) {
+    el.innerHTML = `<p class="muted">Friends need the shared-library setup first —
+      it's the same free Firebase project. <button class="link-btn" data-go="sync">Set that up</button>
+      and this page comes alive.</p>`;
+    el.querySelector("[data-go]").addEventListener("click", () => showScreen("sync"));
+    return;
+  }
+
+  if (!social.isEnabled()) {
+    el.innerHTML = `
+      <p>Follow people and their reading shows up here — what they finished, what
+        they rated, what they thought. Discover leans on them too: a book your
+        friends liked beats a book strangers liked.</p>
+      <p class="muted">Turning this on publishes your name, who you follow, and the
+        books you've finished, rated or reviewed. Nothing else from your shelves
+        leaves the phone, and only people you've given your code to can look you
+        up. You can switch it off any time.</p>
+      <button class="primary-btn" id="social-on">Turn on Friends</button>`;
+    $("#social-on").addEventListener("click", async () => {
+      social.setEnabled(true);
+      await social.publishMe(currentProfile());
+      renderFriendsScreen();
+    });
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="settings-section">
+      <span class="filter-label">Your code</span>
+      <p class="muted">Give this to someone so they can follow you. Anyone with it
+        can see the reading you publish here.</p>
+      <div class="code-row">
+        <code class="friend-code" id="my-code">${esc(social.formatCode(social.myCode()))}</code>
+        <button class="secondary-btn" id="copy-code">Copy</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Follow someone</span>
+      <form class="inline-form" id="follow-form">
+        <input type="text" id="follow-code" placeholder="Their code" autocomplete="off"
+               autocapitalize="characters" spellcheck="false" />
+        <button type="submit" class="primary-btn">Follow</button>
+      </form>
+      <p class="muted" id="follow-msg"></p>
+    </div>
+
+    <div class="settings-section" id="following-list">
+      <span class="filter-label">Following</span>
+      <p class="muted">Checking…</p>
+    </div>
+
+    <div class="settings-section" id="feed-list">
+      <span class="filter-label">Recently read</span>
+      <p class="muted">Checking…</p>
+    </div>
+
+    <button class="link-btn" id="social-off">Turn Friends off</button>`;
+
+  $("#copy-code").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(social.formatCode(social.myCode()));
+      toast("Code copied");
+    } catch {
+      // Clipboard blocked (older iOS in particular) — select it instead so a
+      // long-press copy still works.
+      const range = document.createRange();
+      range.selectNodeContents($("#my-code"));
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      toast("Press and hold to copy");
+    }
+  });
+
+  $("#social-off").addEventListener("click", () => {
+    social.setEnabled(false);
+    toast("Friends off — your reading is no longer published");
+    renderFriendsScreen();
+  });
+
+  $("#follow-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const raw = $("#follow-code").value;
+    const problem = social.codeProblem(raw);
+    if (problem) return ($("#follow-msg").textContent = problem);
+    if (social.isFollowing(raw)) {
+      $("#follow-msg").textContent = "You already follow them.";
+      return;
+    }
+    $("#follow-msg").textContent = "Looking them up…";
+    const doc = await social.fetchReader(raw);
+    if (!doc) {
+      $("#follow-msg").textContent =
+        "No one found with that code. Check it, and that they've turned Friends on.";
+      return;
+    }
+    await social.follow(raw);
+    $("#follow-code").value = "";
+    $("#follow-msg").textContent = "";
+    toast(`Following ${doc.name ?? "them"}`);
+    renderFriendsScreen();
+  });
+
+  renderFollowingList();
+  renderFeed();
+}
+
+async function renderFollowingList() {
+  const el = $("#following-list");
+  if (!el) return;
+  const rows = await social.fetchFollowing();
+  if (!el.isConnected) return; // navigated away while loading
+  el.innerHTML = `<span class="filter-label">Following</span>${
+    rows.length === 0
+      ? `<p class="muted">No one yet. Swap codes with someone and their reading
+         shows up here.</p>`
+      : `<ul class="friend-list">${rows
+          .map(
+            (r) => `<li>
+              <span class="friend-name">${esc(r.missing ? "Unknown code" : r.name)}</span>
+              ${r.missing
+                ? `<span class="badge">not found</span>`
+                : r.friend
+                  ? `<span class="badge friend-badge">friends</span>`
+                  : `<span class="badge">following</span>`}
+              <code class="friend-code small">${esc(social.formatCode(r.code))}</code>
+              <button class="link-btn" data-unfollow="${esc(r.code)}">Unfollow</button>
+            </li>`
+          )
+          .join("")}</ul>
+        <p class="muted">“Friends” means you follow each other. Their books count
+          for the most in Discover.</p>`
+  }`;
+  el.querySelectorAll("[data-unfollow]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      await social.unfollow(btn.dataset.unfollow);
+      toast("Unfollowed");
+      renderFriendsScreen();
+    })
+  );
+}
+
+async function renderFeed() {
+  const el = $("#feed-list");
+  if (!el) return;
+  const items = await social.fetchFeed();
+  if (!el.isConnected) return;
+  el.innerHTML = `<span class="filter-label">Recently read</span>${
+    items.length === 0
+      ? `<p class="muted">Nothing yet — this fills in as the people you follow
+         finish and rate books.</p>`
+      : `<ul class="feed-list">${items
+          .map(
+            (a) => `<li>
+              <p class="feed-head">
+                <strong>${esc(a.who)}</strong>${a.friend ? "" : " <span class='muted'>(following)</span>"}
+                <span class="feed-when">${esc(whenRead(a.at))}</span>
+              </p>
+              <p class="feed-book">${esc(a.title ?? "A book")}${
+                a.authors?.length ? ` <span class="muted">· ${esc(a.authors.join(", "))}</span>` : ""
+              }</p>
+              ${a.rating ? `<p class="card-rating">${starString(a.rating)}</p>` : ""}
+              ${a.review ? `<blockquote class="other-review"><p>${esc(a.review)}</p></blockquote>` : ""}
+            </li>`
+          )
+          .join("")}</ul>`
+  }`;
 }
 
 function renderSyncScreen() {

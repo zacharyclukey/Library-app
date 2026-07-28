@@ -53,6 +53,17 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   databases remain the foundation; the community layer enriches wherever its
   data exists, and a future multi-user release swaps in Firebase Auth without
   touching the UI (see `js/community.js`).
+- **Friends** 🤝 — follow people by swapping reader codes (Settings → Friends).
+  Following is one-way; when someone follows you back the app calls it a
+  friendship. Their reading lands in a feed — what they finished, rated and
+  wrote — and Discover leans on them hardest: a book a friend loved outranks
+  one strangers rate highly, and the card says *"Kelsey read this"* rather
+  than *"readers like you"*. Friends count roughly twice a one-way follow.
+  Off by default; turning it on publishes your name, who you follow, and the
+  books you've finished, rated or reviewed — nothing else from your shelves,
+  and only to people you gave your code to. No accounts: the code *is* the
+  credential, the same trust model as the shared-library password (see
+  `js/social.js`).
 - **Profiles** 👤 — each phone picks a profile; To Read, Completed, and Wishlist
   are kept per person (with Mine / partner / Everyone filters) while the Owned
   shelf stays shared. Books can be reassigned from their detail view, and each
@@ -260,5 +271,6 @@ js/filters.js     genre mapping, filter predicates, sort orders
 js/themes.js      aesthetic registry + light/dark resolution
 js/export.js      printable page / text / CSV / JSON exports
 js/sync.js        optional shared-household sync (Firebase)
+js/social.js      following, friends, and the reading feed
 js/scanner.js     camera + photo barcode scanning
 ```
