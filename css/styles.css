@@ -1323,6 +1323,55 @@ img.cover.missing { display: none; }
 }
 
 /* ============================================================
+   Optional artwork (assets/)
+
+   Each rule below only bites when js/assets.js has found the matching file
+   and put the class on <body>. With no files present none of this applies,
+   and the stock look stands.
+   ============================================================ */
+
+:root {
+  --logo-size: 1.5rem;
+  --header-image-opacity: 0.35;
+}
+
+/* assets/logo.* — replaces the emoji brand mark. */
+body.has-logo .brand-mark {
+  width: var(--logo-size);
+  height: var(--logo-size);
+  background: var(--logo-url) center / contain no-repeat;
+  font-size: 0; /* hides the emoji underneath */
+}
+
+/* assets/header.* — a texture layered over the header colour. */
+body.has-header-image .app-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--header-image) center / cover no-repeat;
+  opacity: var(--header-image-opacity);
+  pointer-events: none;
+}
+body.has-header-image .app-bar { position: relative; }
+body.has-header-image .app-bar > * { position: relative; z-index: 1; }
+
+/* assets/shelf.* — a tiling strip in place of the painted ledge. */
+body.has-shelf-image .grid-book::after {
+  background: var(--shelf-image) center / auto 100% repeat-x;
+}
+
+/* assets/empty.* — artwork on an empty shelf. */
+body.has-empty-art .empty-art {
+  display: block;
+  width: 6rem;
+  height: 6rem;
+  margin: 0 auto 0.6rem;
+  background: var(--empty-url) center / contain no-repeat;
+  font-size: 0;
+  opacity: 1;
+}
+
+/* ============================================================
    Selecting several books
    ============================================================ */
 
@@ -2097,6 +2146,19 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .member-sub { display: block; font-size: 0.74rem; color: var(--muted); }
 .screen-body p { font-size: 0.9rem; line-height: 1.6; }
 .screen-body a { color: var(--accent); }
+
+.settings-note {
+  margin: 0.9rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.settings-note code {
+  font-size: 0.95em;
+  background: var(--bg-soft);
+  border-radius: 4px;
+  padding: 0.05rem 0.25rem;
+}
 
 .credit { display: block; text-align: center; color: var(--muted); font-size: 0.72rem; margin-top: 1rem; }
 

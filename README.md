@@ -231,11 +231,28 @@ registry entry, and it shows up in Settings automatically.
 `data-mode` on `<html>`, so no palette needs a media query, and an inline script
 in `index.html` applies the saved choice before first paint (no flash).
 
+## Making it yours
+
+Personal touches live in two places, both safe from app updates:
+
+- **`assets/`** — drop in `logo.png`, `header.png`, `shelf.png`, `paper.png`
+  or `empty.png` and they appear. No code, and any you skip keep the stock
+  look. See [`assets/README.md`](assets/README.md).
+- **`css/custom.css`** — your own file, loaded last so it always wins. It
+  holds the **"Yours"** aesthetic (a fifth option in Settings, shipped as a
+  soft neutral palette), plus commented-out switches for corner roundness,
+  a custom font, and texture.
+
+Step-by-step, written for someone who doesn't write code:
+**[DESIGN.md](DESIGN.md)**.
+
 ## Project layout
 
 ```
 index.html        app shell (shelf tabs, bottom nav, modals)
 css/styles.css    design tokens, light/dark themes, layouts
+css/custom.css    YOURS — personal palette, fonts, tweaks
+assets/           YOURS — optional logo/texture/artwork drop-ins
 js/app.js         UI logic and state
 js/db.js          localStorage persistence (+ repairs malformed records)
 js/api.js         Open Library / Google Books lookups + series detection

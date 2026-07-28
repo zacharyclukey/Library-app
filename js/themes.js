@@ -38,6 +38,14 @@ export const THEMES = [
     blurb: "Crisp navy and white, clean sans-serif.",
     swatch: ["#22304d", "#f4f6fa", "#d99b1e"],
   },
+  {
+    // Palette lives in css/custom.css, which is the user's own file — see
+    // DESIGN.md. Ships as a soft neutral so it's usable before it's edited.
+    id: "custom",
+    name: "Yours",
+    blurb: "Your own colours — edit css/custom.css.",
+    swatch: ["#453b31", "#f2eee9", "#b8892f"],
+  },
 ];
 
 export const MODES = [

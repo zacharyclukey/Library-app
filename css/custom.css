@@ -1,0 +1,189 @@
+/* ============================================================
+   YOUR FILE — Shelfie personal touches
+
+   This file is yours. Nothing else in the app writes to it, so you can
+   change it freely and updates to the app won't fight your edits. It loads
+   last, which means anything you put here wins over the built-in styling.
+
+   Everything below is switched off (commented out with slashes and stars,
+   like this comment). To turn a line on, delete the opening and closing
+   marks around it. To turn it back off, put them back.
+
+   Colours are written as #rrggbb. Pick them anywhere — an image, a colour
+   picker, coolors.co — and paste them in.
+
+   After editing: save, commit, push. Your phone picks it up next time you
+   open the app (it may take one extra launch, since the last version is
+   cached for offline use).
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   1. YOUR OWN AESTHETIC — the "Yours" option in Settings
+
+   Settings → Aesthetic has a fifth choice called "Yours". Its colours
+   live here, and they start as a soft-neutral palette so it's ready to
+   use as-is. Change any line to make it your own.
+
+   Light version first, dark version below. You can do just the light one
+   and leave the dark one alone — if you use Auto brightness though, both
+   get used, so it's worth setting both eventually.
+   ------------------------------------------------------------ */
+
+:root[data-skin="custom"] {
+  /* Page and surfaces */
+  --bg: #f2eee9;          /* the page behind everything */
+  --bg-soft: #e7e1d9;     /* slightly deeper: input backgrounds, chips */
+  --card: #fdfbf8;        /* book cards, panels, sheets */
+  --line: #ded6cb;        /* hairline borders */
+
+  /* Text */
+  --ink: #2f2b26;         /* main text */
+  --ink-soft: #58514a;    /* secondary text */
+  --muted: #7d746a;       /* captions and hints */
+
+  /* The main colour: buttons, the selected tab, active chips */
+  --accent: #6a5a48;
+  --accent-ink: #fdfbf8;  /* text sitting ON the accent colour */
+  --accent-soft: #ebe4da; /* a pale wash of the accent */
+  --accent-border: #d8cec1;
+
+  /* Stars and highlights */
+  --gold: #b8892f;
+  --gold-soft: #f6eeda;
+  --gold-border: #e3d2ac;
+  --gold-ink: #85601b;
+
+  /* "Owned" ticks and the Remove button */
+  --green: #4c6b46;
+  --green-soft: #e9efe6;
+  --green-border: #c8d9c1;
+  --red: #a2453a;
+  --red-soft: #f7e6e3;
+  --red-border: #e5c5be;
+
+  /* The bar across the top */
+  --header-solid: #453b31;
+  --header-ink: #f6efe6;
+  --header-dim: rgba(246, 239, 230, 0.62);
+
+  /* The wooden ledge each row of books sits on */
+  --shelf-grad: linear-gradient(180deg, #a8907a 0%, #866f59 45%, #63513f 100%);
+
+  /* Line weight of the icons: 1.2 is fine and delicate, 2.4 is chunky */
+  --icon-stroke: 1.7;
+}
+
+:root[data-skin="custom"][data-mode="dark"] {
+  --bg: #171512;
+  --bg-soft: #201d19;
+  --card: #232019;
+  --line: #363029;
+
+  --ink: #efe8dd;
+  --ink-soft: #cfc5b6;
+  --muted: #99907f;
+
+  --accent: #c2a884;
+  --accent-ink: #232019;
+  --accent-soft: #2b2620;
+  --accent-border: #443c31;
+
+  --gold: #ddb268;
+  --gold-soft: #2c2519;
+  --gold-border: #47391f;
+  --gold-ink: #e8c88a;
+
+  --green: #8fbf86;
+  --green-soft: #1f2a1d;
+  --green-border: #33452e;
+  --red: #e08a7c;
+  --red-soft: #2e1f1c;
+  --red-border: #4a302b;
+
+  --header-solid: #201c17;
+  --header-ink: #efe8dd;
+  --header-dim: rgba(239, 232, 221, 0.6);
+
+  --shelf-grad: linear-gradient(180deg, #5d4c3b 0%, #40342a 45%, #2a231c 100%);
+}
+
+
+/* ------------------------------------------------------------
+   2. SMALL TWEAKS THAT APPLY TO EVERY AESTHETIC
+
+   Uncomment any of these to change the app everywhere, whichever
+   aesthetic is selected.
+   ------------------------------------------------------------ */
+
+/* Rounder or squarer corners everywhere.
+   Try 4px for crisp, 22px for very soft.
+
+:root {
+  --r-sm: 9px;
+  --r: 14px;
+  --r-lg: 20px;
+}
+*/
+
+/* Take the wood-grain stripes out of the top bar for a flat colour.
+
+:root { --header-grain: none; }
+*/
+
+/* Remove the subtle paper texture behind the page.
+
+:root { --page-texture: none; }
+*/
+
+/* Remove the warm glow at the top of the page.
+
+:root { --page-glow: none; }
+*/
+
+
+/* ------------------------------------------------------------
+   3. YOUR OWN FONT
+
+   Put the font file in assets/fonts/ (a .woff2 file is best — it's small
+   and every phone reads it), then uncomment the block below and change
+   "MyFont.woff2" to your file's name.
+
+   --serif is the display font: book titles, headings, the app name.
+   --sans is everything else. You can set one or both.
+
+   Free fonts worth a look: Google Fonts (fonts.google.com) lets you
+   download the actual files — use the "Download family" button, then
+   convert the .ttf to .woff2 at cloudconvert.com if you like.
+   ------------------------------------------------------------ */
+
+/*
+@font-face {
+  font-family: "MyFont";
+  src: url("../assets/fonts/MyFont.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --serif: "MyFont", Georgia, serif;
+}
+*/
+
+
+/* ------------------------------------------------------------
+   4. PICTURES
+
+   Drop image files into the assets/ folder using the exact names in
+   assets/README.md and they appear automatically — no code needed at
+   all. This section is only for adjusting how they sit once they're in.
+   ------------------------------------------------------------ */
+
+/* Make the header picture bolder or fainter (1 is full strength).
+
+:root { --header-image-opacity: 0.5; }
+*/
+
+/* Your logo's size in the top bar.
+
+:root { --logo-size: 1.6rem; }
+*/

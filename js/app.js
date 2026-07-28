@@ -7,6 +7,7 @@ import * as themes from "./themes.js";
 import * as community from "./community.js";
 import { icon } from "./icons.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
+import { applyCustomAssets, refreshCustomAssets } from "./assets.js";
 
 // ---------- element handles ----------
 const $ = (sel) => document.querySelector(sel);
@@ -2873,9 +2874,21 @@ function renderSettingsScreen() {
             `<button class="filter-chip ${mode === v ? "active" : ""}" data-mode="${v}">${label}</button>`
         ).join("")}
       </div>
+
+      <p class="settings-note">
+        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork
+        goes in <code>assets/</code>.
+        <button class="link-btn" id="refresh-assets">Check for new artwork</button>
+      </p>
     </div>
 
     <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
+
+  $("#refresh-assets").addEventListener("click", async () => {
+    const found = await refreshCustomAssets();
+    const n = Object.keys(found ?? {}).length;
+    toast(n ? `Using ${n} file${n === 1 ? "" : "s"} from assets/` : "No artwork found in assets/");
+  });
 
   $("#community-toggle").addEventListener("click", () => {
     if (!community.isAvailable()) return;
@@ -3427,6 +3440,7 @@ if ("serviceWorker" in navigator) {
 }
 requestPersistence();
 themes.apply();
+applyCustomAssets(); // picks up anything in assets/; a no-op when it's empty
 themes.watchSystem(() => {
   if (currentScreen === "settings") renderSettingsScreen();
 });
