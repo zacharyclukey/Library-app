@@ -1,0 +1,5 @@
+node_modules/
+# Screenshots the test suites write as they run
+tests/*.png
+*.log
+.DS_Store

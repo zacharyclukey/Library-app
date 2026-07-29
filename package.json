@@ -1,0 +1,14 @@
+{
+  "name": "shelfie",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Photo-powered personal book library. The app itself has no build step and no runtime dependencies — this file exists only so the test suite can install a headless browser.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "start": "node tests/serve.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.47.0"
+  }
+}

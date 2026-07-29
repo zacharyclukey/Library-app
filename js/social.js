@@ -158,6 +158,8 @@ export async function publishMe(profileName) {
   const name = profileName ?? localStorage.getItem("shelfie.profile.v1") ?? "Someone";
   try {
     await fs.m.setDoc(readerDoc(fs, myCode()), {
+      // Lets the rules refuse anyone else overwriting your reader document.
+      uid: sync.uid(),
       readerId: normalizeCode(myCode()),
       name,
       follows: following(),

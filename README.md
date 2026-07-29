@@ -242,6 +242,23 @@ registry entry, and it shows up in Settings automatically.
 `data-mode` on `<html>`, so no palette needs a media query, and an inline script
 in `index.html` applies the saved choice before first paint (no flash).
 
+## Understanding it
+
+Written so you don't have to read the code to know how it works — and so
+someone else can pick it up without a handover:
+
+- **[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)** — a tour for anyone, no code
+  required. What every screen does, where the books live, what each file is.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how it's put together, for
+  a programmer seeing it cold.
+- **[docs/DECISIONS.md](docs/DECISIONS.md)** — *why* it's built this way, with
+  the costs of each choice stated plainly.
+- **[docs/SECURITY.md](docs/SECURITY.md)** — what's protected, what isn't, and
+  what would have to change before strangers use it.
+- **[docs/DATA.md](docs/DATA.md)** — every field, key and collection.
+- **[tests/README.md](tests/README.md)** — ~30 automated suites and what each
+  one covers.
+
 ## Making it yours
 
 Personal touches live in two places, both safe from app updates:
@@ -260,6 +277,8 @@ Step-by-step, written for someone who doesn't write code:
 ## Project layout
 
 ```
+docs/             how it works, why, and what's safe
+tests/            ~30 browser suites  ·  npm test
 index.html        app shell (shelf tabs, bottom nav, modals)
 css/styles.css    design tokens, light/dark themes, layouts
 css/custom.css    YOURS — personal palette, fonts, tweaks

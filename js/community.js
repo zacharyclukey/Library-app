@@ -69,6 +69,8 @@ export async function publish(book, profileName) {
   const rating = book.ratings?.[profileName] ?? null;
   const review = book.reviews?.[profileName]?.text ?? null;
   const signal = {
+    // Written so the security rules can check who owns this document.
+    uid: sync.uid(),
     bookKey: key,
     title: book.title ?? null,
     authors: book.authors ?? [],
@@ -174,6 +176,7 @@ export function publishShelf(bookKeys, profileName) {
       await fs.m.setDoc(
         fs.m.doc(fs.db, "community", READERS_DOC, "signals", contributorId(profileName)),
         {
+          uid: sync.uid(),
           name: profileName ?? null,
           books: [...new Set(bookKeys)].slice(0, 500),
           updatedAt: new Date().toISOString(),

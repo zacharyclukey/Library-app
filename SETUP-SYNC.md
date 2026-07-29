@@ -21,26 +21,69 @@ everyone else just enters the household code.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each household's books are readable/writable by anyone who knows the
-    // household code (an unguessable random string the app generates).
+
+    // Every request must come from a signed-in app user. Shelfie signs people
+    // in anonymously and silently, so nobody has to make an account — but this
+    // one line is what stops the open internet from reading or wiping the
+    // database, which is the difference between "my family uses this" and
+    // "anyone who finds the URL can delete it".
+    function signedIn() { return request.auth != null; }
+
+    // Nothing this app writes is anywhere near this big. The cap stops one
+    // bad actor (or one bug) from filling the free tier.
+    function reasonableSize() { return request.resource.size() < 20000; }
+
+    // A household is addressed by an unguessable id derived from its name and
+    // password, so knowing the id is the permission. Anyone signed in who has
+    // it can read and write that household's books.
     match /households/{household}/books/{book} {
-      allow read, write: if true;
+      allow read: if signedIn();
+      allow write: if signedIn() && reasonableSize();
     }
-    // Opt-in community layer: anonymized-per-device ratings, tags, and
-    // reviews that feed everyone's recommendations.
+
+    // Opt-in community layer: ratings, tags, reviews, and friend profiles.
     match /community/{book} {
-      allow read, write: if true;
+      // Aggregate summaries: readable by all, recomputed by whoever rates.
+      allow read: if signedIn();
+      allow write: if signedIn() && reasonableSize();
+
+      // One document per contributor. You may only write your own: the app
+      // stamps every one with the writer's user id, and these rules check it.
       match /signals/{signal} {
-        allow read, write: if true;
+        allow read: if signedIn();
+        allow create: if signedIn() && reasonableSize()
+                      && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if signedIn() && reasonableSize()
+                      && (resource.data.uid == request.auth.uid
+                          // Documents written before this rule existed have no
+                          // owner recorded. Once everyone has opened the app on
+                          // the current version, delete this line.
+                          || !('uid' in resource.data));
       }
     }
   }
 }
 ```
 
-> Security note: access control is the household code itself. The app generates
-> codes like `cedar-otter-4821`; treat the code like a shared password and the
-> data like it's semi-public (it's just your book list — no personal info).
+## 2b. Turn on anonymous sign-in
+
+The rules above require a signed-in user, so switch that on — it takes one click
+and costs nothing.
+
+1. In the left sidebar: **Build → Authentication → Get started**.
+2. Choose **Anonymous** from the list of providers, toggle it **Enable**, save.
+
+Nobody sees a login screen: the app signs each device in silently in the
+background. If you skip this step the app still opens and works on the phone,
+but syncing will report an error, because the rules will refuse every write.
+
+> **What these rules do and don't protect.** Signing in stops strangers reading
+> or deleting the database, and the ownership check stops one person overwriting
+> another's ratings, reviews, or friend profile. What they can't do is make the
+> household code secret for you: anyone signed in who *has* your code can read
+> that household. Treat the code like a shared password. This is the right level
+> for family and friends; a public release would want real accounts (see
+> `docs/SECURITY.md`).
 
 ## 3. Get your web app config
 

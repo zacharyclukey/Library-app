@@ -72,14 +72,43 @@ export function deviceId() {
   return id;
 }
 
+// Signed-in user id, once anonymous sign-in has completed. Every document
+// this app writes carries it, so the security rules can tell "the person who
+// wrote this" from "anyone else on the internet" — see SETUP-SYNC.md.
+let authUid = null;
+
+export function uid() {
+  return authUid;
+}
+
 async function ensureFirebase() {
   if (!fsdb) {
     const [appMod, fsMod] = await Promise.all([
       import(`${SDK}/firebase-app.js`),
       import(`${SDK}/firebase-firestore.js`),
     ]);
+    const app = appMod.initializeApp(firebaseConfig);
     m = fsMod;
-    fsdb = fsMod.getFirestore(appMod.initializeApp(firebaseConfig));
+    fsdb = fsMod.getFirestore(app);
+
+    // Anonymous sign-in: free, silent, and no account to create. It exists so
+    // the rules can require *some* signed-in user rather than allowing the
+    // whole internet.
+    //
+    // Deliberately separate from the imports above, and deliberately allowed
+    // to fail: if the auth module can't load — blocked network, ad blocker,
+    // a project without the Anonymous provider enabled — sync should still
+    // work exactly as it did before this existed. Writes will then be refused
+    // by the rules and the sync screen says so, which is a far better failure
+    // than the whole feature going dark.
+    try {
+      const authMod = await import(`${SDK}/firebase-auth.js`);
+      const auth = authMod.getAuth(app);
+      const cred = auth.currentUser ?? (await authMod.signInAnonymously(auth)).user;
+      authUid = cred?.uid ?? null;
+    } catch (err) {
+      console.warn("anonymous sign-in unavailable:", err?.message ?? err);
+    }
   }
 }
 
