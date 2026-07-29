@@ -101,6 +101,10 @@ async function ensureFirebase() {
     // work exactly as it did before this existed. Writes will then be refused
     // by the rules and the sync screen says so, which is a far better failure
     // than the whole feature going dark.
+    // If real sign-in is ever added here, it must LINK to this anonymous
+    // account (linkWithCredential) rather than replacing it. Every community
+    // and social document is owned by this uid, and a fresh uid would make a
+    // person's own history unwritable. See docs/SECURITY.md.
     try {
       const authMod = await import(`${SDK}/firebase-auth.js`);
       const auth = authMod.getAuth(app);

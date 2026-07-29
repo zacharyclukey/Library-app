@@ -87,6 +87,23 @@ In order:
 1. **Real accounts.** Firebase Auth with Sign in with Apple / Google, replacing
    bearer codes. Rules scope to `request.auth.uid`. This touches `sync.js`,
    `community.js` and `social.js` — the seams are marked in comments.
+
+   > **Link, don't replace.** Everyone already has an anonymous account, and
+   > the rules tie every rating, review and friend profile to its uid. Adding
+   > a provider must call `linkWithCredential()` on the *existing* anonymous
+   > user, not `signInWithPopup()` on a fresh one. Sign someone in as a new
+   > account and they get a new uid — the rules then refuse their own past
+   > documents, which presents as their history silently going read-only. It
+   > is one function call either way; only one of them is right.
+   >
+   > Related: leave **auto-deletion of anonymous accounts** switched off in
+   > the Firebase console (Authentication → Settings). It purges accounts
+   > untouched for 30 days, which would orphan the documents of anyone who
+   > hadn't opened the app that month.
+   >
+   > Sign in with Apple on the web also needs a Services ID, Team ID, Key ID
+   > and private key, all of which require a paid Apple Developer membership.
+   > Google needs only a support email.
 2. **Cloud-authoritative storage**, so no one loses a library to a cleared
    browser.
 3. **Moderation**: report, block, and content removal for reviews and names.
