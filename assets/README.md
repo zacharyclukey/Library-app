@@ -17,6 +17,19 @@ app keeps its normal look, so you can do one at a time.
 **Keep them small.** Under ~200 KB each. These load on every launch, and the
 app is meant to open instantly even with no signal.
 
+## Textures
+
+`textures/` holds the surfaces the app draws on — paper grain, card stock, wood.
+Same rule as above: overwrite the file at its exact path and the app uses your
+version. Keep them seamlessly tileable and low-contrast, since text sits on top.
+
+| File | Where it shows up |
+|---|---|
+| `textures/card-stock.svg` | The paper grain on a book's checkout card |
+
+More arrive as the aesthetic work lands; every one of them is a file you can
+replace rather than something baked into the code.
+
 ## Fonts
 
 Font files go in `assets/fonts/`. Then uncomment the font block in

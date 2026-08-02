@@ -1,0 +1,19 @@
+<!--
+  Card stock — the paper grain behind a book's checkout card.
+
+  Replaceable: drop a better version at this exact path and the app picks it
+  up. Keep it seamlessly tileable and low-contrast; it sits under text.
+  A PNG works too — see assets/README.md for the naming rules.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <filter id="fibre">
+    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+  </filter>
+  <rect width="200" height="200" filter="url(#fibre)" opacity="0.09"/>
+  <filter id="grain">
+    <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+  </filter>
+  <rect width="200" height="200" filter="url(#grain)" opacity="0.05"/>
+</svg>
