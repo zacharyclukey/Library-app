@@ -173,7 +173,7 @@ export function buildPrintableHtml(books, opts = {}) {
       .join("")}</div>
   </header>
   <ul>${cards}</ul>
-  <footer>📚 Exported from Shelfie · ${fmtDate()}</footer>
+  <footer>Exported from Shelfie · ${fmtDate()}</footer>
 </div></body></html>`;
 }
 

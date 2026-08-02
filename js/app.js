@@ -6,7 +6,7 @@ import * as xport from "./export.js";
 import * as themes from "./themes.js";
 import * as community from "./community.js";
 import * as social from "./social.js";
-import { icon } from "./icons.js";
+import { icon, loadIconOverrides, refreshIconOverrides } from "./icons.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 import { applyCustomAssets, refreshCustomAssets } from "./assets.js";
 
@@ -100,8 +100,8 @@ const SHELVES = ["owned", "tbr", "completed", "wishlist"];
 // Older records have no medium; they're treated as print. The whole feature
 // is opt-in (Settings → Track copy types) and invisible until enabled —
 // ownership alone is already covered by the "I own this copy" checkbox.
-const MEDIA = { print: "📕 Print", ebook: "📱 E-book", audio: "🎧 Audiobook" };
-const MEDIUM_ICON = { ebook: "📱", audio: "🎧" };
+const MEDIA = { print: "Print", ebook: "E-book", audio: "Audiobook" };
+const MEDIUM_ICON = { print: "print", ebook: "tablet", audio: "headphones" };
 const MEDIUM_KEY = "shelfie.trackMedium.v1";
 
 function trackMedium() {
@@ -162,17 +162,17 @@ function storeLinks(b) {
   const isbn = b.isbn13 ?? b.isbn10;
   const q = encodeURIComponent(isbn ?? `${b.title} ${b.authors?.[0] ?? ""}`);
   return [
-    ["🛒 Amazon", b.isbn10
+    ["Amazon", b.isbn10
       ? `https://www.amazon.com/dp/${b.isbn10}`
       : `https://www.amazon.com/s?k=${q}`],
-    ["📕 Barnes & Noble", `https://www.barnesandnoble.com/s/${q}`],
-    ["🏪 Bookshop.org", `https://bookshop.org/search?keywords=${q}`],
-    ["♻️ ThriftBooks", `https://www.thriftbooks.com/browse/?b.search=${q}`],
-    ["📜 AbeBooks", isbn
+    ["Barnes & Noble", `https://www.barnesandnoble.com/s/${q}`],
+    ["Bookshop.org", `https://bookshop.org/search?keywords=${q}`],
+    ["ThriftBooks", `https://www.thriftbooks.com/browse/?b.search=${q}`],
+    ["AbeBooks", isbn
       ? `https://www.abebooks.com/servlet/SearchResults?isbn=${isbn}`
       : `https://www.abebooks.com/servlet/SearchResults?kn=${q}`],
-    ["🏛️ Library (WorldCat)", `https://search.worldcat.org/search?q=${q}`],
-    ["⭐ Goodreads", `https://www.goodreads.com/search?q=${q}`],
+    ["Library (WorldCat)", `https://search.worldcat.org/search?q=${q}`],
+    ["Goodreads", `https://www.goodreads.com/search?q=${q}`],
   ];
 }
 
@@ -557,7 +557,9 @@ function renderShelf() {
   $("#empty-text").textContent = filtered
     ? "Nothing matches your search or filters."
     : `Your ${SHELF_LABEL[currentShelf]} shelf is empty.`;
-  $("#empty-action").textContent = filtered ? "Clear filters" : "＋ Add your first book";
+  $("#empty-action").innerHTML = filtered
+    ? "Clear filters"
+    : `${icon("plus")}<span>Add your first book</span>`;
   $("#empty-action").dataset.action = filtered ? "clear" : "add";
   emptyState.classList.toggle("hidden", books.length > 0);
   $("#shelf-summary").textContent = books.length ? xport.summaryLine(books) : "";
@@ -875,12 +877,12 @@ function gridCard(b, showNames) {
         <p class="grid-author">${esc((b.authors ?? []).join(", "))}</p>
       </div>
       <div class="grid-meta">
-        ${b.reading ? `<span class="mini-badge reading" title="Currently reading">📖</span>` : ""}
+        ${b.reading ? `<span class="mini-badge reading" title="Currently reading">${icon("bookOpen")}</span>` : ""}
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
-        ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${MEDIUM_ICON[b.medium]}</span>` : ""}
-        ${trackContent() && b.spice ? `<span class="mini-badge spice" title="Spice ${b.spice} of 5">🌶️${b.spice}</span>` : ""}
+        ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${icon(MEDIUM_ICON[b.medium])}</span>` : ""}
+        ${trackContent() && b.spice ? `<span class="mini-badge spice" title="Spice ${b.spice} of 5">${icon("flame")}${b.spice}</span>` : ""}
         ${trackContent() && !b.spice && ["mature", "explicit"].includes(b.content) ? `<span class="mini-badge mature-tag">18+</span>` : ""}
-        ${trackContent() && b.content === "kids" ? `<span class="mini-badge kids-tag">🧸</span>` : ""}
+        ${trackContent() && b.content === "kids" ? `<span class="mini-badge kids-tag">${icon("teddy")}</span>` : ""}
         ${currentShelf === "owned" && b.shelf !== "owned"
           ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[b.shelf])}">${SHELF_ICON[b.shelf]}</span>`
           : ""}
@@ -899,7 +901,7 @@ function listCard(b, showNames) {
        </span>`
     : "";
   const moreBadge = missing > 0
-    ? `<span class="badge more-badge">📚 ${missing} more in series</span>`
+    ? `<span class="badge more-badge">${icon("books")} ${missing} more in series</span>`
     : "";
   return `
     <article class="book-card${selectedIds.has(b.id) ? " picked" : ""}" data-id="${esc(b.id)}">
@@ -914,14 +916,14 @@ function listCard(b, showNames) {
         <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
         ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
         <div class="badges">
-          ${b.reading ? `<span class="badge reading-badge">📖 Reading now</span>` : ""}
+          ${b.reading ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
           ${currentShelf === "owned" && b.shelf !== "owned"
             ? `<span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>`
             : ""}
-          ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
+          ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${icon(MEDIUM_ICON[b.medium])} ${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
           ${trackContent() && b.content ? `<span class="badge content-badge">${flt.CONTENT_LABEL[b.content] ?? esc(b.content)}</span>` : ""}
-          ${trackContent() && b.spice ? `<span class="badge spice-badge">${"🌶️".repeat(b.spice)}</span>` : ""}
-          ${showNames && b.profile ? `<span class="badge profile-badge">👤 ${esc(b.profile)}</span>` : ""}
+          ${trackContent() && b.spice ? `<span class="badge spice-badge">${icon("flame")} ${b.spice}</span>` : ""}
+          ${showNames && b.profile ? `<span class="badge profile-badge">${icon("user")} ${esc(b.profile)}</span>` : ""}
           ${seriesBadge}${moreBadge}
         </div>
       </div>
@@ -1051,10 +1053,11 @@ function chipGroup(label, options, current, onPick) {
   wrap.innerHTML = `<span class="filter-label">${esc(label)}</span>`;
   const row = document.createElement("div");
   row.className = "profile-filter";
-  options.forEach(([value, text]) => {
+  options.forEach(([value, text, glyph]) => {
     const btn = document.createElement("button");
     btn.className = "filter-chip" + (current === value ? " active" : "");
-    btn.textContent = text;
+    // A third element names an icon; chips that have one draw it inline.
+    btn.innerHTML = (glyph ? icon(glyph) : "") + `<span>${esc(text)}</span>`;
     btn.addEventListener("click", () => onPick(current === value ? null : value));
     row.appendChild(btn);
   });
@@ -1135,11 +1138,11 @@ function renderFilterPanel() {
   sortWrap.innerHTML = `<span class="filter-label">Sort this shelf</span>`;
   const sortRow = document.createElement("div");
   sortRow.className = "profile-filter";
-  flt.SORT_OPTIONS.forEach(([value, text]) => {
+  flt.SORT_OPTIONS.forEach(([value, text, glyph]) => {
     const btn = document.createElement("button");
     btn.className = "filter-chip sort-chip" + (shelfSort === value ? " active" : "");
     btn.dataset.sort = value;
-    btn.textContent = text;
+    btn.innerHTML = (glyph ? icon(glyph) : "") + `<span>${esc(text)}</span>`;
     btn.addEventListener("click", () => {
       setSort(value);
       renderFilterPanel();
@@ -1273,7 +1276,7 @@ function renderProfileScreen() {
       ${profiles
         .map(
           (p) => `<button class="filter-chip big ${p === me ? "active" : ""}"
-                          data-pick-profile="${esc(p)}">👤 ${esc(p)}</button>`
+                          data-pick-profile="${esc(p)}">${icon("user")} ${esc(p)}</button>`
         )
         .join("")}
     </div>
@@ -1879,7 +1882,7 @@ async function openDetail(id) {
         <p class="hero-meta">${heroMeta.map(esc).join("<br />")}</p>
         <div class="badges">
           <span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>
-          ${b.reading ? `<span class="badge reading-badge">📖 Reading now</span>` : ""}
+          ${b.reading ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
         </div>
       </div>
     </div>
@@ -1889,7 +1892,7 @@ async function openDetail(id) {
       // chips appear only when copy-type tracking is enabled.
       const readingToggle = b.shelf === "tbr" || b.shelf === "owned"
         ? `<button class="filter-chip ${b.reading ? "active" : ""}" data-reading-toggle>
-             ${b.reading ? "📖 Reading now" : "📖 Start reading"}</button>`
+             ${icon("bookOpen")} ${b.reading ? "Reading now" : "Start reading"}</button>`
         : "";
       const ownedToggle = b.shelf !== "owned" && b.shelf !== "wishlist"
         ? `<button class="filter-chip ${b.owned ? "active" : ""}" data-owned-toggle
@@ -1931,8 +1934,8 @@ async function openDetail(id) {
       <span class="rate-label">Spice:</span>
       <span class="rate-stars">
         ${[1, 2, 3, 4, 5]
-          .map((n) => `<button class="star-btn pepper ${(b.spice ?? 0) >= n ? "filled" : ""}"
-                        data-spice="${n}" aria-label="Spice ${n} of 5">🌶️</button>`)
+          .map((n) => `<button class="star-btn spice-pip ${(b.spice ?? 0) >= n ? "filled" : ""}"
+                        data-spice="${n}" aria-label="Spice ${n} of 5">${icon("flame")}</button>`)
           .join("")}
       </span>
       ${b.spice ? `<button class="link-btn" data-clear-spice>clear</button>` : ""}
@@ -2120,7 +2123,7 @@ async function renderCommunityLine(b) {
   const el = $("#community-line");
   if (!el || !summary || !summary.ratingCount) return;
   const bits = [`★ ${summary.ratingAvg.toFixed(1)} from ${summary.ratingCount} reader${summary.ratingCount === 1 ? "" : "s"}`];
-  if (summary.spiceCount) bits.push(`🌶️ ${summary.spiceAvg.toFixed(1)}`);
+  if (summary.spiceCount) bits.push(`Spice ${summary.spiceAvg.toFixed(1)}`);
   if (summary.reviewCount) bits.push(`${summary.reviewCount} review${summary.reviewCount === 1 ? "" : "s"}`);
   el.textContent = "Shelfie readers: " + bits.join(" · ");
 }
@@ -2229,10 +2232,10 @@ async function renderSeriesSection(book) {
     const owned = ownedTitles.has(normTitle(e.title));
     const wished = !owned && wishTitles.has(normTitle(e.title));
     const flag = owned
-      ? `<span class="own-flag">✅ owned</span>`
+      ? `<span class="own-flag">${icon("check")} owned</span>`
       : wished
-        ? `<span class="own-flag wished">🎁 wishlisted</span>`
-        : `<button class="wish-btn" data-wish-idx="${i}">＋ Wishlist</button>`;
+        ? `<span class="own-flag wished">${icon("gift")} wishlisted</span>`
+        : `<button class="wish-btn" data-wish-idx="${i}">${icon("plus")}<span>Wishlist</span></button>`;
     return `
       <li class="${owned ? "owned" : "missing"}">
         ${e.coverUrl ? `<img src="${esc(e.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
@@ -2251,7 +2254,7 @@ async function renderSeriesSection(book) {
         ? `<p class="muted">${
             missingCount
               ? `You're missing ${missingCount} of ${cached.books.length} books in this series.`
-              : `You own all ${cached.books.length} books we found in this series. 🎉`
+              : `You own all ${cached.books.length} books we found in this series.`
           }</p><ul class="series-list">${items.join("")}</ul>`
         : `<p class="muted">This book is part of “${esc(cached.series.name)}”, but we couldn't list the other entries.</p>`
     }
@@ -2274,7 +2277,7 @@ async function renderSeriesSection(book) {
         owned: false,
         profile: currentProfile() ?? null,
       });
-      renderSeriesSection(book); // re-render to show the 🎁 flag
+      renderSeriesSection(book); // re-render to show the wishlisted flag
       renderShelf();
     })
   );
@@ -2580,8 +2583,8 @@ function renderRecs(el, recs) {
               <small class="muted">${esc(r.reason)}</small>
             </span>
             ${wished
-              ? `<span class="own-flag wished">🎁</span>`
-              : `<button class="wish-btn" data-rec-idx="${i}">＋ Wishlist</button>`}
+              ? `<span class="own-flag wished">${icon("gift")}</span>`
+              : `<button class="wish-btn" data-rec-idx="${i}">${icon("plus")}<span>Wishlist</span></button>`}
           </li>`;
         })
         .join("")}
@@ -2604,7 +2607,7 @@ function renderRecs(el, recs) {
         profile: currentProfile() ?? null,
       });
       renderShelf();
-      renderRecs(el, recsCache.recs); // re-render to show the 🎁 flag
+      renderRecs(el, recsCache.recs); // re-render to show the wishlisted flag
     })
   );
 }
@@ -2635,7 +2638,7 @@ function exportTitle() {
 function renderExportScreen() {
   const el = $("#export-content");
   const books = exportBooks();
-  const scopes = [...SHELVES.map((s) => [s, `${SHELF_ICON[s]} ${SHELF_LABEL[s]}`]), ["all", "📚 Everything"]];
+  const scopes = [...SHELVES.map((s) => [s, `${SHELF_ICON[s]} ${SHELF_LABEL[s]}`]), ["all", `${icon("books")} Everything`]];
   const canFilter = exportScope === currentShelf;
 
   el.innerHTML = `
@@ -2662,22 +2665,22 @@ function renderExportScreen() {
       <span class="filter-label">Format</span>
       <div class="format-grid">
         <button class="method-btn" data-format="page" ${books.length ? "" : "disabled"}>
-          <span class="method-icon">📄</span>
+          <span class="method-icon">${icon("page")}</span>
           <span class="method-label">Printable page</span>
           <span class="method-hint">Opens a styled page you can print or save as PDF</span>
         </button>
         <button class="method-btn" data-format="text" ${books.length ? "" : "disabled"}>
-          <span class="method-icon">💬</span>
+          <span class="method-icon">${icon("quote")}</span>
           <span class="method-label">Share as text</span>
           <span class="method-hint">A tidy list to text or email</span>
         </button>
         <button class="method-btn" data-format="csv" ${books.length ? "" : "disabled"}>
-          <span class="method-icon">📊</span>
+          <span class="method-icon">${icon("chart")}</span>
           <span class="method-label">Spreadsheet</span>
           <span class="method-hint">CSV for Excel or Google Sheets</span>
         </button>
         <button class="method-btn" data-format="json">
-          <span class="method-icon">💾</span>
+          <span class="method-icon">${icon("save")}</span>
           <span class="method-label">Backup</span>
           <span class="method-hint">Full JSON of the whole library</span>
         </button>
@@ -2860,7 +2863,7 @@ function renderSettingsScreen() {
         <span class="row-main">
           <span class="row-icon">${icon("flame")}</span>
           <span>Spice &amp; content ratings
-            <span class="row-sub">Tag books Kids / Teen / Mature / Explicit with a 🌶️ scale</span>
+            <span class="row-sub">Tag books Kids / Teen / Mature / Explicit, and rate spice 1–5</span>
           </span>
         </span>
         <span class="row-go">${trackContent() ? "On" : "Off"}</span>
@@ -2911,17 +2914,19 @@ function renderSettingsScreen() {
       </div>
 
       <p class="settings-note">
-        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork
-        goes in <code>assets/</code>.
+        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork goes
+        in <code>assets/</code>, and any icon can be replaced by dropping a file at
+        <code>assets/icons/&lt;name&gt;.svg</code>.
         <button class="link-btn" id="refresh-assets">Check for new artwork</button>
       </p>
     </div>
 
-    <span class="credit">📚 Shelfie · book data from Open Library &amp; Google Books</span>`;
+    <span class="credit">Shelfie · book data from Open Library &amp; Google Books</span>`;
 
   $("#refresh-assets").addEventListener("click", async () => {
-    const found = await refreshCustomAssets();
-    const n = Object.keys(found ?? {}).length;
+    const [found, icons] = await Promise.all([refreshCustomAssets(), refreshIconOverrides()]);
+    const n = Object.keys(found ?? {}).length + (icons?.length ?? 0);
+    renderSettingsScreen();
     toast(n ? `Using ${n} file${n === 1 ? "" : "s"} from assets/` : "No artwork found in assets/");
   });
 
@@ -3056,7 +3061,7 @@ function updateRequestBanner() {
     return;
   }
   const names = syncRequests.map((r) => r.name ?? "Someone");
-  banner.innerHTML = `🔔 <strong>${esc(names.join(" and "))}</strong>
+  banner.innerHTML = `${icon("bell")} <strong>${esc(names.join(" and "))}</strong>
     ${names.length === 1 ? "wants" : "want"} to join your shared library
     <span class="banner-action">Review</span>`;
   banner.classList.remove("hidden");
@@ -3390,7 +3395,7 @@ function renderSyncWaiting(el) {
     <p class="muted" style="font-size:0.82rem">You can close this — the app keeps
     checking and connects automatically once you're approved. No books are
     shared in either direction until then.</p>
-    ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
+    ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
     <div class="detail-actions">
       <button id="cancel-join-btn" class="danger-btn">Cancel request</button>
     </div>`;
@@ -3447,7 +3452,7 @@ function renderSyncActive(el) {
     </div>`;
 
   const leaveBlock = `
-    ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
+    ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
     <div class="detail-actions">
       <button id="leave-btn" class="danger-btn">Leave shared library</button>
     </div>`;
@@ -3455,8 +3460,8 @@ function renderSyncActive(el) {
   if (sync.isNamed()) {
     const name = sync.currentLibraryName() ?? "Shared library";
     el.innerHTML = `
-      <p>✅ Sharing is <strong>on</strong>. This phone is connected to:</p>
-      <p class="household-code">📚 ${esc(name)}</p>
+      <p>${icon("check")} Sharing is <strong>on</strong>. This phone is connected to:</p>
+      <p class="household-code">${icon("books")} ${esc(name)}</p>
       <p class="muted">Password protected. To let someone in, tell them the
       library name and password — on their phone: <em>Settings → Shared
       library → Join</em>. The password never leaves your devices, so there's
@@ -3468,7 +3473,7 @@ function renderSyncActive(el) {
     // Legacy code-based household.
     const code = sync.currentHousehold();
     el.innerHTML = `
-      <p>✅ Sharing is <strong>on</strong>. This phone is part of household:</p>
+      <p>${icon("check")} Sharing is <strong>on</strong>. This phone is part of household:</p>
       <p class="household-code">${esc(code)}</p>
       <p class="muted">Anyone who joins with this code shares the library.</p>
       ${memberBlock}
@@ -3531,7 +3536,7 @@ function renderSyncJoin(el) {
     <strong>same name and password</strong> lands in the same library — create
     it once, then your partner joins with the same details. Books already on
     each phone are merged in, so nothing is lost.</p>
-    ${syncError ? `<p class="sync-error">⚠️ ${esc(syncError)}</p>` : ""}
+    ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
     <form id="library-form">
       <div class="inline-form">
         <input type="text" id="library-name" placeholder="Library name (e.g. Lukey Library)"
@@ -3665,6 +3670,9 @@ if ("serviceWorker" in navigator) {
 }
 requestPersistence();
 themes.apply();
+// Swapped-in icon files (assets/icons/) before the first render, so a
+// replaced glyph never flashes as the built-in first.
+await loadIconOverrides().catch(() => {});
 applyCustomAssets(); // picks up anything in assets/; a no-op when it's empty
 themes.watchSystem(() => {
   if (currentScreen === "settings") renderSettingsScreen();

@@ -46,12 +46,19 @@
   width: 1.25em;
   height: 1.25em;
   flex: none;
+  vertical-align: -0.18em;
+}
+
+/* The built-in drawings are strokes in the current colour, which is how they
+   pick up the palette and each skin's line weight for free. A drop-in file
+   that colours itself (assets/icons/<name>.svg) is marked .ico-file and left
+   alone — otherwise these would repaint someone's artwork flat. */
+.ico:not(.ico-file) {
   fill: none;
   stroke: currentColor;
   stroke-width: var(--icon-stroke);
   stroke-linecap: var(--icon-cap);
   stroke-linejoin: var(--icon-cap);
-  vertical-align: -0.18em;
 }
 
 :root[data-mode="dark"] {
@@ -740,6 +747,9 @@ body {
 .profile-filter:empty { margin: 0; }
 
 .filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
   background: var(--card);
   border: 1px solid var(--line);
   color: var(--ink-soft);
@@ -759,6 +769,14 @@ body {
   font-weight: 600;
 }
 .filter-chip.big { font-size: 0.9rem; padding: 0.5rem 1rem; }
+.filter-chip .ico { width: 0.95rem; height: 0.95rem; opacity: 0.85; }
+.filter-chip.active .ico { opacity: 1; }
+/* Badges and flags carry icons now rather than emoji. Sizes for the rest of
+   them live with the layouts they belong to, near the bottom of this file. */
+.own-flag .ico { vertical-align: -0.16em; }
+.brand-mark .ico { width: 1.35rem; height: 1.35rem; }
+.empty-art .ico { width: 2.8rem; height: 2.8rem; opacity: 0.5; }
+.sync-error .ico { vertical-align: -0.16em; margin-right: 0.15rem; }
 
 /* Heads-up in the add dialog when the book is already on a shelf. */
 .dupe-note {
@@ -1036,8 +1054,11 @@ img.cover.missing { display: none; }
 .mini-badge.mature-tag { background: var(--red-soft); color: var(--red); border-color: var(--red-border); font-weight: 700; }
 .mini-badge.kids-tag { background: var(--green-soft); border-color: var(--green-border); }
 .content-badge { background: var(--bg-soft); color: var(--ink-soft); border-color: var(--line); }
-.star-btn.pepper { font-size: 1.15rem; filter: grayscale(1) opacity(0.35); }
-.star-btn.pepper.filled { filter: none; }
+/* Spice pips are the flame icon, lit left-to-right. Unlit ones stay in the
+   muted ink so the row reads as a scale rather than as five separate buttons. */
+.star-btn.spice-pip { color: var(--muted); opacity: 0.4; }
+.star-btn.spice-pip.filled { color: var(--red); opacity: 1; }
+.star-btn.spice-pip .ico { width: 1.25rem; height: 1.25rem; }
 .medium-badge { background: var(--accent-soft); color: var(--ink-soft); border-color: var(--accent-border); }
 .mini-badge.medium { background: var(--accent-soft); color: var(--ink-soft); border-color: var(--accent-border); }
 
@@ -1707,6 +1728,7 @@ body.selecting {
   cursor: pointer;
 }
 .primary-btn:hover { filter: brightness(1.12); }
+.primary-btn .ico { width: 0.95rem; height: 0.95rem; stroke-width: 2.4; margin-right: 0.25rem; }
 .secondary-btn {
   background: var(--card);
   color: var(--ink);
@@ -1981,6 +2003,7 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
   white-space: nowrap;
 }
 .wish-btn:hover { filter: brightness(0.97); }
+.wish-btn .ico { width: 0.72rem; height: 0.72rem; stroke-width: 2.4; margin-right: 0.12rem; }
 .own-flag.wished { color: var(--gold-ink); font-weight: 600; }
 
 /* ---------- export & settings ---------- */

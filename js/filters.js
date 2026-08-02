@@ -101,31 +101,34 @@ export const AGE_OPTIONS = [
   ["classic", "20+ yrs old"],
 ];
 export const FORMAT_OPTIONS = [
-  ["hardcover", "Hardcover"],
-  ["paperback", "Paperback"],
-  ["ebook", "E-book"],
-  ["audio", "Audiobook"],
+  ["hardcover", "Hardcover", "print"],
+  ["paperback", "Paperback", "print"],
+  ["ebook", "E-book", "tablet"],
+  ["audio", "Audiobook", "headphones"],
 ];
 export const STATUS_OPTIONS = [
-  ["reading", "📖 Currently reading"],
+  ["reading", "Currently reading", "bookOpen"],
 ];
 // Content/audience tags. "SFW" as a filter means "not marked mature or
 // explicit" — untagged books pass, since most of a library is never tagged.
 export const CONTENT_OPTIONS = [
-  ["kids", "🧸 Kids"],
-  ["teen", "🌱 Teen"],
-  ["sfw", "✅ SFW"],
-  ["mature", "🔞 Mature"],
-  ["explicit", "🌶️ Explicit"],
+  ["kids", "Kids", "teddy"],
+  ["teen", "Teen", "sprout"],
+  ["sfw", "SFW", "shield"],
+  ["mature", "Mature", "mature"],
+  ["explicit", "Explicit", "flame"],
 ];
 export const CONTENT_LABEL = {
-  kids: "🧸 Kids", teen: "🌱 Teen", general: "✅ SFW",
-  mature: "🔞 Mature", explicit: "🌶️ Explicit",
+  kids: "Kids", teen: "Teen", general: "SFW", mature: "Mature", explicit: "Explicit",
+};
+// Which icon stands for each audience tag, so chips and badges agree.
+export const CONTENT_ICON = {
+  kids: "teddy", teen: "sprout", general: "shield", mature: "mature", explicit: "flame",
 };
 export const SPICE_OPTIONS = [
-  ["any", "🌶️ Spicy (any)"],
-  ["3plus", "🌶️🌶️🌶️ 3+"],
-  ["none", "No spice"],
+  ["any", "Spicy (any)", "flame"],
+  ["3plus", "Spicy 3+", "flame"],
+  ["none", "No spice", "shield"],
 ];
 
 // Best-effort auto-tag from subject tags and Google Books' maturity flag.
@@ -211,7 +214,7 @@ export function activeFilterCount(f) {
 
 export const SORT_OPTIONS = [
   ["added", "Recently added"],
-  ["series", "📚 Series, grouped"],
+  ["series", "Series, grouped", "books"],
   ["title", "Title A–Z"],
   ["author", "Author A–Z"],
   ["newest", "Newest published"],

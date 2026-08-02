@@ -1,11 +1,12 @@
 # Making Shelfie yours
 
-Everything personal lives in **two places**. You never need to touch anything
-else, and app updates won't overwrite either of them.
+Everything personal lives in **three places**. You never need to touch
+anything else, and app updates won't overwrite any of them.
 
 | What | Where | What it's for |
 |---|---|---|
 | Pictures | `assets/` | Logo, textures, artwork — just drop files in |
+| Icons | `assets/icons/` | Replace any icon by name, one file each |
 | Colours, fonts, shapes | `css/custom.css` | One file, heavily commented, all yours |
 
 There's no build step and nothing to install. Change a file, push it, and the
@@ -28,6 +29,27 @@ Full sizes and tips: [`assets/README.md`](assets/README.md).
 
 Miss one out and the app keeps its normal look for that piece, so you can do
 them one at a time and see how each lands.
+
+---
+
+## Icons
+
+Every icon in the app is a slot with a name. Draw your own, save it as
+`assets/icons/<name>.svg`, refresh — done. Delete the file and the original
+comes back, so nothing you try is permanent.
+
+For example, the flame that stands for spice lives at `assets/icons/flame.svg`.
+The full list of names, and what each one is used for, is in
+[`docs/ASSETS.md`](docs/ASSETS.md).
+
+Two ways your drawing can behave, and the app works out which you meant:
+
+- **Drawn in outlines, no colours set** — it picks up the palette and each
+  aesthetic's line weight automatically, exactly like the built-in icons do.
+  This is usually what you want.
+- **Coloured in** — it's used exactly as you drew it, in every aesthetic.
+
+If a new file doesn't show up, tap **Settings → Check for new artwork**.
 
 ---
 

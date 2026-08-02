@@ -37,7 +37,19 @@ const server = createServer(async (req, res) => {
   }
 });
 
-await new Promise((ok) => server.listen(PORT, ok));
+// `npm start` uses the same port, so this is a normal thing to trip over.
+// The raw Node error for it is a stack trace with no advice in it.
+await new Promise((ok, fail) => {
+  server.once("error", fail);
+  server.listen(PORT, ok);
+}).catch((err) => {
+  console.error(
+    err.code === "EADDRINUSE"
+      ? `Port ${PORT} is already in use — stop "npm start" (or another test run) and try again.`
+      : `Could not start the test server: ${err.message}`
+  );
+  process.exit(1);
+});
 
 const filter = process.argv[2];
 const NOT_SUITES = new Set(["run.mjs", "serve.mjs"]);

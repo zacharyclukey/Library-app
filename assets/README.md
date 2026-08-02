@@ -30,6 +30,14 @@ version. Keep them seamlessly tileable and low-contrast, since text sits on top.
 More arrive as the aesthetic work lands; every one of them is a file you can
 replace rather than something baked into the code.
 
+## Icons
+
+`icons/` replaces the app's own icons, one file per name. Save your drawing as
+`icons/<name>.svg` — `icons/flame.svg` replaces the flame, and so on. Delete
+the file and the built-in drawing comes back.
+
+Every name, and where each one appears: [`../docs/ASSETS.md`](../docs/ASSETS.md).
+
 ## Fonts
 
 Font files go in `assets/fonts/`. Then uncomment the font block in
@@ -38,6 +46,8 @@ it's the smallest and every phone reads it.
 
 ## After adding a file
 
-Commit and push. Your phone picks it up the next time you open the app
-(sometimes one launch later, since the previous version is cached so the app
-still opens offline).
+Commit and push, then refresh the app. Anything in this folder is fetched
+fresh rather than served from the offline cache, so a file you changed or
+deleted takes effect straight away. If the app doesn't notice a *new* file,
+tap **Settings → Check for new artwork** — it only hunts for files it hasn't
+seen twice a day, and that button tells it to look now.

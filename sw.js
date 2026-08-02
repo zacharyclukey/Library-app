@@ -8,7 +8,7 @@
 // best-effort so shelves look right offline; API calls (Open Library,
 // Google Books, Firebase) always go to the network.
 
-const SHELL_CACHE = "shelfie-shell-v6";
+const SHELL_CACHE = "shelfie-shell-v7";
 const COVER_CACHE = "shelfie-covers-v1";
 
 const SHELL = [
@@ -57,7 +57,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   if (url.origin === location.origin) {
-    event.respondWith(staleWhileRevalidate(event.request));
+    // Your own artwork is the one thing you edit by hand, so it can't wait a
+    // launch to change: overwrite assets/logo.png and the next refresh shows
+    // it, delete assets/icons/flame.svg and the built-in drawing comes back.
+    // The cached copy is still kept for offline.
+    if (url.pathname.includes("/assets/")) event.respondWith(networkFirst(event.request));
+    else event.respondWith(staleWhileRevalidate(event.request));
   } else if (/covers\.openlibrary\.org|books\.google/.test(url.hostname)) {
     event.respondWith(coverCacheFirst(event.request));
   }
@@ -77,6 +82,20 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => cached);
   return cached ?? refresh;
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    const res = await fetch(request);
+    if (res.ok) cache.put(request, res.clone());
+    // A deleted file has to stop resolving, or its old copy would be served
+    // out of the cache for good.
+    else if (res.status === 404) await cache.delete(request);
+    return res;
+  } catch {
+    return (await cache.match(request)) ?? Response.error();
+  }
 }
 
 async function coverCacheFirst(request) {

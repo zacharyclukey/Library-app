@@ -36,7 +36,7 @@
 <body>
   <header class="app-bar">
     <div class="brand">
-      <span class="brand-mark">📚</span>
+      <span class="brand-mark" data-ico="books"></span>
       <span class="brand-name">Shelfie</span>
     </div>
     <button id="profile-chip" class="profile-chip" title="Switch profile">
@@ -71,7 +71,7 @@
   </nav>
 
     <button id="profile-banner" class="profile-banner hidden">
-      <span data-ico="user"></span> Who's using this phone? <span class="banner-action">Choose a profile</span>
+      <span data-ico="user"></span> Who&rsquo;s using this phone? <span class="banner-action">Choose a profile</span>
     </button>
     <button id="request-banner" class="profile-banner request hidden"></button>
     <div id="nudge-card" class="nudge hidden"></div>
@@ -103,9 +103,9 @@
     <div id="list-sentinel" aria-hidden="true"></div>
 
     <div id="empty-state" class="empty-state hidden">
-      <span class="empty-art" aria-hidden="true">📚</span>
+      <span class="empty-art" aria-hidden="true" data-ico="books"></span>
       <p id="empty-text">No books on this shelf yet.</p>
-      <button id="empty-action" class="primary-btn">＋ Add your first book</button>
+      <button id="empty-action" class="primary-btn"><span data-ico="plus"></span><span>Add your first book</span></button>
     </div>
   </section>
 
@@ -261,9 +261,9 @@
     <div class="filter-group hidden" id="medium-group" style="margin-bottom:0.7rem">
       <span class="filter-label">Copy type</span>
       <div class="profile-filter" id="medium-choice" style="margin-top:0.25rem">
-        <button class="filter-chip active" data-medium="print">📕 Print</button>
-        <button class="filter-chip" data-medium="ebook">📱 E-book / Kindle</button>
-        <button class="filter-chip" data-medium="audio">🎧 Audiobook / Audible</button>
+        <button class="filter-chip active" data-medium="print"><span data-ico="print"></span><span>Print</span></button>
+        <button class="filter-chip" data-medium="ebook"><span data-ico="tablet"></span><span>E-book / Kindle</span></button>
+        <button class="filter-chip" data-medium="audio"><span data-ico="headphones"></span><span>Audiobook / Audible</span></button>
       </div>
     </div>
     <div class="shelf-choice">

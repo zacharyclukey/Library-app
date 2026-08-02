@@ -261,18 +261,22 @@ someone else can pick it up without a handover:
 
 ## Making it yours
 
-Personal touches live in two places, both safe from app updates:
+Personal touches live in three places, all safe from app updates:
 
 - **`assets/`** — drop in `logo.png`, `header.png`, `shelf.png`, `paper.png`
   or `empty.png` and they appear. No code, and any you skip keep the stock
   look. See [`assets/README.md`](assets/README.md).
+- **`assets/icons/`** — every icon in the app is a named, swappable slot. Save
+  your drawing as `assets/icons/<name>.svg` and it replaces the built-in;
+  delete the file and the built-in comes back.
 - **`css/custom.css`** — your own file, loaded last so it always wins. It
   holds the **"Yours"** aesthetic (a fifth option in Settings, shipped as a
   soft neutral palette), plus commented-out switches for corner roundness,
   a custom font, and texture.
 
 Step-by-step, written for someone who doesn't write code:
-**[DESIGN.md](DESIGN.md)**.
+**[DESIGN.md](DESIGN.md)**. Every replaceable file, by name and size:
+**[docs/ASSETS.md](docs/ASSETS.md)**.
 
 ## Project layout
 

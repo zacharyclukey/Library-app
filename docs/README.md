@@ -9,6 +9,7 @@ Start wherever fits.
 | Wondering *why* something is built that way | [DECISIONS.md](DECISIONS.md) |
 | Reviewing it for safety, or thinking about going public | [SECURITY.md](SECURITY.md) |
 | Debugging, or writing a migration | [DATA.md](DATA.md) |
+| Swapping in your own artwork, icons or colours | [ASSETS.md](ASSETS.md) |
 | Wanting to change how it looks | [../DESIGN.md](../DESIGN.md) |
 | Setting up sharing between phones | [../SETUP-SYNC.md](../SETUP-SYNC.md) |
 | Running or writing tests | [../tests/README.md](../tests/README.md) |
