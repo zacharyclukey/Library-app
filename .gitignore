@@ -1,4 +1,6 @@
-node_modules/
+# No trailing slash: this is sometimes a symlink to a shared install rather
+# than a real folder, and "node_modules/" only matches a directory.
+node_modules
 # Screenshots the test suites write as they run
 tests/*.png
 *.log
