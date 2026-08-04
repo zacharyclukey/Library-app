@@ -396,6 +396,19 @@ function toast(message, { actionLabel, onAction, ms = 5000 } = {}) {
   });
 }
 
+// The shared library refused a delete. The book is already gone from this
+// phone, so the next snapshot will hand it back and it will look like Remove
+// did nothing at all. Say what actually happened, and where the fix is —
+// it's the Firestore rules, not anything the reader can do on the phone.
+let deleteRefusedWarned = 0;
+window.addEventListener("shelfie:sync-delete-refused", () => {
+  if (Date.now() - deleteRefusedWarned < 30000) return;
+  deleteRefusedWarned = Date.now();
+  setTimeout(() => {
+    toast("The shared library wouldn't let that book be removed, so it will come back. Your Firestore rules need updating — see SETUP-SYNC.md.", { ms: 12000 });
+  }, 0);
+});
+
 // The store couldn't write. Say so plainly and point at the way out — a
 // silent failure here looks like the app losing books.
 let storageWarned = 0;

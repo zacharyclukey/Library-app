@@ -31,6 +31,11 @@ service cloud.firestore {
 
     // Nothing this app writes is anywhere near this big. The cap stops one
     // bad actor (or one bug) from filling the free tier.
+    //
+    // It can only be asked about a write that carries a document. On a delete
+    // there is no incoming document — request.resource is null — so calling
+    // size() on it fails and any rule using it evaluates to false. That is why
+    // deletes are allowed separately below and never mention this function.
     function reasonableSize() { return request.resource.size() < 20000; }
 
     // A household is addressed by an unguessable id derived from its name and
@@ -38,14 +43,16 @@ service cloud.firestore {
     // it can read and write that household's books.
     match /households/{household}/books/{book} {
       allow read: if signedIn();
-      allow write: if signedIn() && reasonableSize();
+      allow create, update: if signedIn() && reasonableSize();
+      allow delete: if signedIn();
     }
 
     // Opt-in community layer: ratings, tags, reviews, and friend profiles.
     match /community/{book} {
       // Aggregate summaries: readable by all, recomputed by whoever rates.
       allow read: if signedIn();
-      allow write: if signedIn() && reasonableSize();
+      allow create, update: if signedIn() && reasonableSize();
+      allow delete: if signedIn();
 
       // One document per contributor. You may only write your own: the app
       // stamps every one with the writer's user id, and these rules check it.
@@ -53,7 +60,10 @@ service cloud.firestore {
         allow read: if signedIn();
         allow create: if signedIn() && reasonableSize()
                       && request.resource.data.uid == request.auth.uid;
-        allow update, delete: if signedIn() && reasonableSize()
+        allow update: if signedIn() && reasonableSize()
+                      && (resource.data.uid == request.auth.uid
+                          || !('uid' in resource.data));
+        allow delete: if signedIn()
                       && (resource.data.uid == request.auth.uid
                           // Documents written before this rule existed have no
                           // owner recorded. Once everyone has opened the app on

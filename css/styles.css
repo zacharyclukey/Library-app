@@ -1849,7 +1849,17 @@ body.selecting {
 }
 .shelf-pick:hover { border-color: var(--accent); transform: translateY(-2px); }
 .shelf-pick span { font-size: 1.05rem; }
-.also-own { display: block; margin-top: 0.85rem; font-size: 0.82rem; color: var(--muted); }
+.also-own {
+  display: flex;
+  gap: 0.5rem;
+  align-items: start;
+  margin-top: 0.85rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.also-own input { margin-top: 0.15rem; flex: none; }
+.also-own strong { color: var(--ink-soft); font-weight: 650; }
 
 .detail-table { border-collapse: collapse; font-size: 0.83rem; margin-top: 0.5rem; }
 .detail-table th {

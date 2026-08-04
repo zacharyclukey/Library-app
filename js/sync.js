@@ -500,11 +500,20 @@ export function upsertRemote(book) {
   );
 }
 
+// A refused delete is the one sync failure the reader sees on their own: the
+// book is gone locally, then the next snapshot hands it straight back. That
+// looks like the app ignoring them, so it says what happened rather than
+// warning to a console nobody has open. (It happened: the security rules
+// allowed `write` in one line, and on a delete there is no incoming document
+// for the size check to measure, so every deletion was denied.)
 export function removeRemote(id) {
   if (!isActive()) return;
-  m.deleteDoc(bookDoc(currentHousehold(), id)).catch((err) =>
-    console.warn("sync delete failed:", err.message)
-  );
+  m.deleteDoc(bookDoc(currentHousehold(), id)).catch((err) => {
+    console.warn("sync delete failed:", err.message);
+    window.dispatchEvent(
+      new CustomEvent("shelfie:sync-delete-refused", { detail: err?.code ?? err?.message })
+    );
+  });
 }
 
 // Firestore rejects `undefined` field values; strip them defensively.
