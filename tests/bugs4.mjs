@@ -41,6 +41,8 @@ const beforeOwned = await count("owned");
 await page.click('.grid-book[data-id="o2"]');
 await page.waitForTimeout(500);
 console.log("1a. detail sheet open with a Remove button:", await page.isVisible("[data-delete]"));
+// Removing asks first now — it's the one action nothing else can undo.
+page.once("dialog", (d) => d.accept());
 await page.click("[data-delete]");
 await page.waitForTimeout(600);
 console.log("1b. removed:", beforeOwned, "→", await count("owned"), "| store:", (await idsInStore()).join(","));

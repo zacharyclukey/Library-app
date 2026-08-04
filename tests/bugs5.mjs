@@ -123,6 +123,7 @@ console.log("6. Zach's rating reached Kelsey:", await kelsey.page.evaluate(() =>
 // Kelsey deletes a book; it must disappear on Zach's phone, not come back.
 await kelsey.page.click('.grid-book[data-id="z2"]');
 await kelsey.page.waitForTimeout(600);
+kelsey.page.once("dialog", (d) => d.accept());
 await kelsey.page.click("[data-delete]");
 await kelsey.page.waitForTimeout(2000);
 await zach.page.waitForTimeout(1500);

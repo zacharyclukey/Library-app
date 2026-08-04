@@ -103,6 +103,7 @@ drawing is used as-is.
 | `chart` | Reading stats |
 | `page` | Page counts |
 | `alert` | A warning |
+| `trash` | Remove a book from your library |
 
 Four more are drawn and ready but not on screen yet — `store`, `clock`,
 `ribbon` and `party`. They're listed here so the set stays complete; replacing

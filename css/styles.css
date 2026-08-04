@@ -1312,6 +1312,7 @@ img.cover.missing { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .qa-btn.armed { animation: none; }
 }
+.qa-foot { display: flex; gap: 0.3rem; align-items: stretch; }
 .qa-details {
   background: var(--accent);
   color: var(--accent-ink);
@@ -1322,7 +1323,23 @@ img.cover.missing { display: none; }
   font-weight: 650;
   padding: 0.4rem 0.3rem;
   cursor: pointer;
+  flex: 1;
 }
+/* Removing sits apart from the move buttons and stays quiet until touched —
+   it's the one action on this card you can't undo by pressing another one. */
+.qa-remove {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.45rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.qa-remove:hover { color: var(--red); border-color: var(--red-border); background: var(--red-soft); }
+.qa-remove .ico { width: 0.85rem; height: 0.85rem; }
 /* The facts line is the only decorative part of the back, so it's the part
    that gives way: on a narrow card with a long series name it shrinks and
    clips rather than shoving the action buttons off the bottom. */
@@ -1336,7 +1353,7 @@ img.cover.missing { display: none; }
   min-height: 0;
   overflow: hidden;
 }
-.qa-stars, .qa-row, .qa-details { flex: none; }
+.qa-stars, .qa-row, .qa-foot { flex: none; }
 .qa-facts:empty { display: none; }
 
 @media (prefers-reduced-motion: reduce) {

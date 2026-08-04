@@ -79,6 +79,7 @@ const PATHS = {
   chart: '<path d="M4.5 19.5h15"/><rect x="6.5" y="11" width="3" height="6"/><rect x="11" y="7" width="3" height="10"/><rect x="15.5" y="13.5" width="3" height="3.5"/>',
   page: '<path d="M6.5 3.5h7l4.5 4.5v12a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z"/><path d="M13.5 3.5V8H18"/>',
   ribbon: '<path d="M8 3.5h8v13l-4-2.6-4 2.6z"/>',
+  trash: '<path d="M5 7h14"/><path d="M10 7V5.6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V7"/><path d="M6.6 7l.8 11.6a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9L18 7"/><path d="M10.4 10.6v5.8M13.6 10.6v5.8"/>',
 };
 
 // ---------- swapped-in replacements ----------

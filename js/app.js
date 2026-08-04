@@ -826,6 +826,38 @@ function missingInSeries(b) {
 // Every quick action says what it does in words — an icon alone is a guess,
 // and a mis-tap here moves a book off the shelf you were looking at. A cover
 // is too narrow for an icon *and* a readable label, so the words win.
+// Removing is the one action that can't be reached by doing something else
+// afterwards, so it asks first — and says plainly that it's everywhere, since
+// the Owned tab lists books that live on other shelves and "remove" could
+// otherwise read as "take it out of this one view".
+function confirmRemoval(b) {
+  const also = b.shelf !== "owned" && b.owned ? " It's on your Owned list too." : "";
+  return confirm(
+    `Remove “${b.title}” from your library?\n\n` +
+      `This takes it off every shelf, along with your rating and review.${also}\n\n` +
+      `You can undo it straight after.`
+  );
+}
+
+// One removal, whichever button reached it — the quick action on a flipped
+// card and the one in Book details do exactly the same thing.
+function removeBookEverywhere(b) {
+  const snapshot = JSON.parse(JSON.stringify(b));
+  db.removeBook(b.id);
+  seriesCache.delete(b.id);
+  flippedIds.delete(b.id);
+  selectedIds.delete(b.id);
+  renderShelf();
+  toast(`Removed “${b.title}”`, {
+    actionLabel: "Undo",
+    onAction: () => {
+      db.replaceBook(snapshot);
+      renderShelf();
+      toast("Restored");
+    },
+  });
+}
+
 function qaButton({ attr, label, on = false }) {
   return `<button class="qa-btn${on ? " on" : ""}" ${attr} title="${esc(label)}">
             <span class="qa-label">${esc(label)}</span>
@@ -869,7 +901,11 @@ function gridCard(b, showNames) {
             ${b.shelf !== "wishlist"
               ? qaButton({ attr: 'data-qa-move="wishlist"', label: "Wishlist" }) : ""}
           </div>
-          <button class="qa-details" data-qa-details>Full details</button>
+          <div class="qa-foot">
+            <button class="qa-details" data-qa-details>Details</button>
+            <button class="qa-remove" data-qa-remove
+                    aria-label="Remove from library" title="Remove from library">${icon("trash")}</button>
+          </div>
         </div>
       </div>
       <div>
@@ -1715,6 +1751,11 @@ bookList.addEventListener("click", (e) => {
     renderShelf();
     return;
   }
+  if (e.target.closest("[data-qa-remove]")) {
+    if (!confirmRemoval(b)) return;
+    removeBookEverywhere(b);
+    return;
+  }
   if (e.target.closest("[data-qa-details]")) {
     setFlipped(flip, id, false);
     return openDetail(id);
@@ -2096,19 +2137,9 @@ async function openDetail(id) {
     openDetail(id);
   });
   $("#detail-content").querySelector("[data-delete]").addEventListener("click", () => {
-    const snapshot = JSON.parse(JSON.stringify(b));
-    db.removeBook(id);
-    seriesCache.delete(id);
+    if (!confirmRemoval(b)) return;
     detailModal.close();
-    renderShelf();
-    toast(`Removed “${b.title}”`, {
-      actionLabel: "Undo",
-      onAction: () => {
-        db.replaceBook(snapshot);
-        renderShelf();
-        toast("Restored");
-      },
-    });
+    removeBookEverywhere(b);
   });
 
   renderSeriesSection(b);
