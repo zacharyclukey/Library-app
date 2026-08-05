@@ -29,8 +29,17 @@ await page.addInitScript((books) => {
 await page.goto("http://localhost:8765/");
 await page.waitForTimeout(700);
 
-const shelfOf = (id) => page.evaluate((x) =>
-  JSON.parse(localStorage.getItem("shelfie.library.v1")).find((b) => b.id === x)?.shelf, id);
+// Shelves are per-person now (db.shelfFor), so the record's own `shelf` field
+// is only the household's fallback answer — a personal move writes to
+// `shelves[who]` and leaves it alone. Reading the raw field would report a
+// book as unmoved after moving it, so ask the way the app does: this reader's
+// answer if they've given one, otherwise the household's Owned.
+const shelfOf = (id) => page.evaluate(async (x) => {
+  const db = await import("/js/db.js");
+  const b = db.getBook(x);
+  if (!b) return null;
+  return db.shelfFor(b, "Zach") ?? (b.owned || b.shelf === "owned" ? "owned" : b.shelf);
+}, id);
 const card = (id) => `.grid-book[data-id="${id}"]`;
 
 // Section 1 spent a long time asserting nothing. It drove a quick-action move

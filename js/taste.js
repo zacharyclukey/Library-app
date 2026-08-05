@@ -30,6 +30,7 @@
 // already cached and fetches a small number of missing ones in the background,
 // so the first run on a big library is merely thinner, never slower.
 
+import * as db from "./db.js";
 import * as flt from "./filters.js";
 import * as signals from "./signals.js";
 
@@ -77,13 +78,13 @@ export function weightOf(book, profile, ctx = {}) {
   if (rating != null && RATING_WEIGHT[rating] !== undefined) {
     base = RATING_WEIGHT[rating];
   } else {
-    base = SHELF_WEIGHT[book.shelf] ?? 0.25;
+    base = SHELF_WEIGHT[db.shelfFor(book, profile)] ?? 0.25;
   }
   const key = ctx.keyOf?.(book);
   if (key && ctx.abandoned?.has(key)) base += ABANDONED_WEIGHT;
-  // A book read and rated is dated by when it was read; anything else by when
-  // it arrived, which is the only date we have.
-  const when = book.finishedAt ?? book.addedAt ?? null;
+  // A book read and rated is dated by when *this reader* finished it; anything
+  // else by when it arrived, which is the only date we have.
+  const when = db.finishedAtFor(book, profile) ?? book.addedAt ?? null;
   return base * decayFor(when);
 }
 
@@ -101,11 +102,14 @@ function subjectsOf(book, cachedSubjects) {
   return [...new Set([...fromWork, ...(book.subjects ?? [])])];
 }
 
-// Books belonging to this reader. The Owned shelf is shared by design (see
-// DECISIONS.md), so it counts for everyone; the personal shelves only count
-// for whoever they belong to.
+// Books this reader's taste can be read from. Owning is the household's fact
+// (see DECISIONS.md) so an owned copy counts for everyone; the three personal
+// shelves are per-person, and db.shelfFor gives this reader's own answer —
+// falling back to the household's for a book nobody has claimed.
 export function booksFor(books, profile) {
-  return books.filter((b) => !b.profile || b.profile === profile || b.shelf === "owned");
+  return books.filter(
+    (b) => b.owned || !b.profile || b.profile === profile || db.shelfFor(b, profile)
+  );
 }
 
 // A cheap fingerprint of everything a build depends on. Changes when a book is
@@ -119,7 +123,7 @@ export function fingerprint(books, profile) {
   mix(String(profile ?? ""));
   for (const b of booksFor(books, profile)) {
     mix(b.id ?? "");
-    mix(b.shelf ?? "");
+    mix(db.shelfFor(b, profile) ?? "");
     mix(String(b.ratings?.[profile] ?? b.rating ?? ""));
   }
   mix(String(signals.count("dismissed")));

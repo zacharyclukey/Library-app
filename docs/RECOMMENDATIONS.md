@@ -448,6 +448,14 @@ star also never reaches the list — the test caught it sitting at position five
 which is not what "I didn't like this" means. Books already on your own shelves
 are exempt, because you chose those.
 
+One thing that changed underneath this work: shelves became **per person**
+while it was in flight. To Read, Finished and Wishlist are now one reader's
+answer rather than the record's, with the household's `shelf` as the fallback
+(see `db.shelfFor`). Every part of the recommender reads through that — the
+taste profile, the shelves source, the series source, and the test for whether
+someone just finished a book as against catalogued one. Reading `b.shelf`
+directly would offer you your partner's To Read pile and call it yours.
+
 One thing the plan didn't call for and the code now does: **putting down a book
 you were reading counts as abandoning it.** There is no DNF shelf and adding
 one would be a chore, but moving a book flagged *reading* to anywhere other

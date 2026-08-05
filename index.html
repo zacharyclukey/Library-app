@@ -147,7 +147,7 @@
   <section id="screen-profile" class="screen">
     <div class="screen-head">
       <button class="back-btn" data-back="settings" aria-label="Back" data-ico="chevronLeft"></button>
-      <h2><span data-ico="user"></span> Profiles</h2>
+      <h2><span data-ico="user"></span> You</h2>
     </div>
     <div class="screen-body" id="profile-content"></div>
   </section>
@@ -202,6 +202,9 @@
       <button class="shelf-pick" data-bulk-move="completed"><span data-ico="check"></span> Finished</button>
       <button class="shelf-pick" data-bulk-move="wishlist"><span data-ico="gift"></span> Wishlist</button>
     </div>
+    <!-- Filled in only when there's more than one person in the library:
+         handing a stack of books to whoever they belong to. -->
+    <div class="bulk-assign hidden" id="bulk-assign"></div>
   </div>
 
   <nav class="bottom-nav">

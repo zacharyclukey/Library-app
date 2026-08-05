@@ -21,6 +21,7 @@
 // enrich it. See docs/RECOMMENDATIONS.md.
 
 import * as api from "./api.js";
+import * as db from "./db.js";
 import * as flt from "./filters.js";
 import * as social from "./social.js";
 import * as community from "./community.js";
@@ -53,10 +54,12 @@ const BOXSET = /box(ed)? set|omnibus|\bbundle\b|complete collection/i;
 // The best next book is very often one you already picked. This costs nothing,
 // works offline, needs no other users, and on most evenings it should win.
 // A recommender that only ever sends you shopping is the wrong product.
+// Shelves are per-person: db.shelfFor answers through this reader's eyes and
+// falls back to the household's `shelf` for anyone who hasn't given their own.
+// Reading `b.shelf` directly would offer you your partner's To Read pile.
 export function fromShelves(books, profile) {
   return books
-    .filter((b) => (b.shelf === "tbr" || b.shelf === "wishlist") && b.shelf !== "completed")
-    .filter((b) => !b.profile || b.profile === profile)
+    .filter((b) => ["tbr", "wishlist"].includes(db.shelfFor(b, profile)))
     .map((b) => ({
       key: community.bookKey(b),
       workKey: b.workKey ?? null,
@@ -70,9 +73,12 @@ export function fromShelves(books, profile) {
       subjects: b.subjects ?? [],
       // Currently-reading books float to the top of a shelf; here they'd be
       // odd advice ("read the book you're reading"), so they sit lower.
-      sourceScore: b.reading ? 0.5 : b.shelf === "tbr" ? 1 : 0.8,
+      sourceScore: db.readingFor(b, profile) ? 0.5 : db.shelfFor(b, profile) === "tbr" ? 1 : 0.8,
       source: "shelves",
-      reason: b.shelf === "tbr" ? "Waiting on your To Read shelf" : "On your wishlist",
+      reason:
+        db.shelfFor(b, profile) === "tbr"
+          ? "Waiting on your To Read shelf"
+          : "On your wishlist",
       book: b,
     }));
 }
@@ -91,13 +97,13 @@ export async function fromSeries(books, profile, { limit = 3 } = {}) {
   for (const b of books) {
     const name = b.series?.name;
     if (!name) continue;
-    if (b.profile && b.profile !== profile) continue;
     const rating = b.ratings?.[profile] ?? b.rating ?? null;
-    const liked = rating != null ? rating >= 4 : b.shelf === "completed";
+    const liked = rating != null ? rating >= 4 : db.shelfFor(b, profile) === "completed";
     if (!liked) continue;
     const row = bySeries.get(name) ?? { name, at: "", authors: [], best: 0, from: b };
-    if ((b.finishedAt ?? b.addedAt ?? "") > row.at) {
-      row.at = b.finishedAt ?? b.addedAt ?? "";
+    const at = db.finishedAtFor(b, profile) ?? b.addedAt ?? "";
+    if (at > row.at) {
+      row.at = at;
       row.from = b;
     }
     row.best = Math.max(row.best, rating ?? 4);

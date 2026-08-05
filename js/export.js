@@ -57,7 +57,11 @@ const csvCell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-export function buildCsv(books, ratingOf = () => null) {
+// `shelfOf` is injected for the same reason `ratingOf` is: a shelf belongs to
+// a person now, and this module has no idea who is holding the phone. Reading
+// b.shelf directly would export the household's fallback, so a book you
+// finished could leave here still labelled "tbr".
+export function buildCsv(books, ratingOf = () => null, shelfOf = (b) => b.shelf) {
   const headers = [
     "Title", "Subtitle", "Authors", "Series", "Series #", "Copy type", "Format",
     "Publisher", "Published", "Pages", "ISBN-13", "ISBN-10", "Shelf", "Owned",
@@ -68,7 +72,7 @@ export function buildCsv(books, ratingOf = () => null) {
     b.series?.name, b.series?.position,
     { print: "print", ebook: "e-book", audio: "audiobook" }[b.medium] ?? "print",
     b.format, b.publisher, b.publishDate,
-    b.pageCount, b.isbn13, b.isbn10, b.shelf, b.owned ? "yes" : "no",
+    b.pageCount, b.isbn13, b.isbn10, shelfOf(b), b.owned ? "yes" : "no",
     ratingOf(b), b.content, b.spice, b.profile, b.addedAt?.slice(0, 10),
   ]);
   return [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");

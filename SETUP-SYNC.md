@@ -38,6 +38,29 @@ service cloud.firestore {
     // deletes are allowed separately below and never mention this function.
     function reasonableSize() { return request.resource.size() < 20000; }
 
+    // Your own account: profile name, which shared library you're in, and a
+    // backup of your personal library. Unlike a household, this is genuinely
+    // private — only the signed-in owner can read or write it, which is what
+    // makes it safe to keep one identity across your phone, your browser and
+    // any new device.
+    match /users/{userId} {
+      // Only the owner, and only ever their own document. Deletes are listed
+      // apart from create/update for the same reason as above: there is no
+      // incoming document to measure, so a rule naming reasonableSize() on a
+      // delete would evaluate to false and refuse it.
+      function mine() { return signedIn() && request.auth.uid == userId; }
+
+      allow read: if mine();
+      allow create, update: if mine() && reasonableSize();
+      allow delete: if mine();
+
+      match /books/{book} {
+        allow read: if mine();
+        allow create, update: if mine() && reasonableSize();
+        allow delete: if mine();
+      }
+    }
+
     // A household is addressed by an unguessable id derived from its name and
     // password, so knowing the id is the permission. Anyone signed in who has
     // it can read and write that household's books.

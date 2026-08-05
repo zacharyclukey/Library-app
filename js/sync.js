@@ -158,6 +158,7 @@ export async function linkAccount(email, password) {
     throw friendlyAuthError(err);
   }
   authUid = authApi.auth.currentUser.uid;
+  rememberAccount();
   return accountEmail();
 }
 
@@ -178,7 +179,150 @@ export async function signInAccount(email, password) {
     throw friendlyAuthError(err);
   }
   authUid = user?.uid ?? null;
+  rememberAccount();
   return accountEmail();
+}
+
+// ---------- your account as the identity, not just a rescue ----------
+//
+// On a phone, the home-screen app and the browser are two separate storage
+// containers, each quietly inventing its own anonymous identity — the same
+// person shows up as two different people depending on which icon they
+// tapped. The account is how those contexts (and any new device) converge on
+// one "you": a users/{uid} doc carries your profile name and which shared
+// library you're in, and users/{uid}/books carries your own library, so any
+// context that signs in becomes the same person with the same books.
+
+// Signed in with a real credential — as opposed to the throwaway anonymous
+// user every context gets for the security rules.
+export function isAccounted() {
+  return !!authApi?.auth?.currentUser?.email;
+}
+
+// Firebase persists sessions per-context in IndexedDB, which this module
+// can't see without loading the whole SDK. A one-byte hint in localStorage
+// lets the app know at boot whether loading it is worth the bytes.
+const ACCOUNT_HINT_KEY = "shelfie.account.v1";
+
+export function accountHint() {
+  return localStorage.getItem(ACCOUNT_HINT_KEY);
+}
+
+function rememberAccount() {
+  const email = accountEmail();
+  if (email) localStorage.setItem(ACCOUNT_HINT_KEY, email);
+}
+
+export async function signOutAccount() {
+  stopPersonal();
+  localStorage.removeItem(ACCOUNT_HINT_KEY);
+  if (authApi?.auth) {
+    try {
+      await authApi.mod.signOut(authApi.auth);
+      // Back to a throwaway identity so the rules still see a signed-in user
+      // (a shared library this device stays in keeps syncing).
+      const cred = (await authApi.mod.signInAnonymously(authApi.auth)).user;
+      authUid = cred?.uid ?? null;
+    } catch {
+      authUid = null;
+    }
+  }
+}
+
+function accountDoc() {
+  return m.doc(fsdb, "users", authUid);
+}
+
+// Merge a patch into the account's profile doc: { profileName, libId,
+// libName }. Fire-and-forget from callers; nothing user-visible fails when
+// the write does, it just means one fewer thing restored on the next device.
+export async function saveAccountProfile(patch) {
+  if (!isAccounted()) return;
+  await m.setDoc(
+    accountDoc(),
+    { ...patch, email: accountEmail(), updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+}
+
+export async function loadAccountProfile() {
+  if (!isAccounted()) return null;
+  const snap = await m.getDoc(accountDoc());
+  return snap.exists() ? snap.data() : null;
+}
+
+// Boot-time restore. Loads the SDK only when something suggests it will pay
+// off (a stored account hint), waits for the persisted session, and hands
+// the app what the account knows: who you are and where your library lives.
+// Returns null when there's no signed-in account.
+export async function accountBootstrap() {
+  if (!firebaseConfig) return null;
+  if (!accountHint() && !currentHousehold()) return null;
+  await ensureFirebase();
+  if (!isAccounted()) {
+    // The hint outlived the session (revoked, or cleared server-side).
+    localStorage.removeItem(ACCOUNT_HINT_KEY);
+    return null;
+  }
+  rememberAccount();
+  const profile = (await loadAccountProfile().catch(() => null)) ?? {};
+  return { email: accountEmail(), ...profile };
+}
+
+// ---------- your own library, synced to your account ----------
+//
+// The personal channel is the solo counterpart of the household one: the
+// same upload-then-listen engine pointed at users/{uid}/books. It runs when
+// you're signed in and NOT in a shared library — a shared library is the
+// louder truth while you're in one, and the account doc remembers your
+// membership so other contexts join it instead of needing this copy.
+
+let unsubPersonal = null;
+
+export function isPersonalActive() {
+  return !!unsubPersonal;
+}
+
+function personalBookDoc(id) {
+  const raw = String(id ?? "");
+  const usable =
+    raw && raw !== "." && raw !== ".." && !raw.includes("/") && !/^__.*__$/.test(raw);
+  return m.doc(
+    fsdb, "users", authUid, "books",
+    usable ? raw : "enc_" + encodeURIComponent(raw).replace(/\./g, "%2E")
+  );
+}
+
+export async function startPersonal(onRemote, onError, opts = {}) {
+  if (!firebaseConfig) return false;
+  await ensureFirebase();
+  if (!isAccounted()) return false;
+  stopPersonal();
+  // Local books go up first, so signing in merges the shelves rather than
+  // letting whichever copy loaded last win. The snapshot then delivers the
+  // union back.
+  const local = (opts.localBooks ?? []).filter(
+    (b) => b?.id && !String(b.id).startsWith("_")
+  );
+  await Promise.all(
+    local.map((b) => m.setDoc(personalBookDoc(b.id), sanitize(b), { merge: true }))
+  );
+  unsubPersonal = m.onSnapshot(
+    m.collection(fsdb, "users", authUid, "books"),
+    (snap) => {
+      const books = snap.docs
+        .filter((d) => !d.id.startsWith("_"))
+        .map((d) => d.data());
+      onRemote(books);
+    },
+    (err) => onError?.(err)
+  );
+  return true;
+}
+
+export function stopPersonal() {
+  unsubPersonal?.();
+  unsubPersonal = null;
 }
 
 async function ensureFirebase() {
@@ -204,6 +348,12 @@ async function ensureFirebase() {
     try {
       const authMod = await import(`${SDK}/firebase-auth.js`);
       const auth = authMod.getAuth(app);
+      // Wait for the SDK to restore any persisted session BEFORE deciding to
+      // sign in anonymously. currentUser is null for a beat on every boot
+      // even when a user is saved; racing past that here would replace a
+      // signed-in account with a brand-new anonymous identity — the exact
+      // "different me" bug accounts exist to end.
+      await auth.authStateReady?.();
       const cred = auth.currentUser ?? (await authMod.signInAnonymously(auth)).user;
       authUid = cred?.uid ?? null;
       authApi = { mod: authMod, auth };
@@ -274,6 +424,11 @@ export async function start(onRemote, onError, opts = {}) {
   if (!firebaseConfig || !libId) return false;
   await ensureFirebase();
   stop();
+  // While you're in a shared library it is the louder truth; the account
+  // doc remembers the membership, so other devices follow you here rather
+  // than to the solo copy.
+  stopPersonal();
+  saveAccountProfile({ libId, libName: currentLibraryName() ?? null }).catch(() => {});
   let firstSnapshot = true;
   unsubscribe = m.onSnapshot(
     m.collection(fsdb, "households", libId, "books"),
@@ -574,6 +729,18 @@ export function passwordProblem(libraryName, password) {
   return null;
 }
 
+// Take up a membership the account already holds. No password needed and no
+// approval asked: the account doc recording this library IS the proof, and it
+// could only have been written by a device that was already inside. Callers
+// follow this with start(), which announces the device and syncs the books.
+export function adoptLibrary(libId, libName) {
+  if (!libId) return false;
+  localStorage.setItem(HOUSEHOLD_KEY, libId);
+  if (libName) localStorage.setItem(HOUSEHOLD_NAME_KEY, libName);
+  localStorage.removeItem(PENDING_KEY);
+  return true;
+}
+
 // Legacy: join an existing code-based household directly by its code.
 export async function join(code, localBooks, onRemote, onError, opts = {}) {
   code = code.trim().toLowerCase();
@@ -594,21 +761,33 @@ async function uploadBooks(libId, localBooks) {
 }
 
 // Leave the library on this device only; cloud data and other members are
-// untouched, and a local copy of the books is kept.
+// untouched, and a local copy of the books is kept. The account doc forgets
+// the membership too — otherwise every other signed-in context would march
+// straight back into the library this one just left.
 export function leave() {
   removeMember();               // best effort; fire-and-forget
   stop();
   localStorage.removeItem(HOUSEHOLD_KEY);
   localStorage.removeItem(HOUSEHOLD_NAME_KEY);
+  saveAccountProfile({ libId: null, libName: null }).catch(() => {});
 }
 
 // Write-through hooks called by db.js after local mutations. Fire-and-forget:
-// Firestore queues writes while offline and retries itself.
+// Firestore queues writes while offline and retries itself. Whichever
+// channel is live gets the write — the household when you're sharing, your
+// account library when you're solo.
 export function upsertRemote(book) {
-  if (!isActive() || String(book.id).startsWith("_")) return;
-  m.setDoc(bookDoc(currentHousehold(), book.id), sanitize(book)).catch((err) =>
-    console.warn("sync upsert failed:", err.message)
-  );
+  if (String(book.id).startsWith("_")) return;
+  if (isActive()) {
+    m.setDoc(bookDoc(currentHousehold(), book.id), sanitize(book)).catch((err) =>
+      console.warn("sync upsert failed:", err.message)
+    );
+  }
+  if (isPersonalActive()) {
+    m.setDoc(personalBookDoc(book.id), sanitize(book)).catch((err) =>
+      console.warn("account sync upsert failed:", err.message)
+    );
+  }
 }
 
 // A refused delete is the one sync failure the reader sees on their own: the
@@ -618,13 +797,19 @@ export function upsertRemote(book) {
 // allowed `write` in one line, and on a delete there is no incoming document
 // for the size check to measure, so every deletion was denied.)
 export function removeRemote(id) {
-  if (!isActive()) return;
-  m.deleteDoc(bookDoc(currentHousehold(), id)).catch((err) => {
-    console.warn("sync delete failed:", err.message);
-    window.dispatchEvent(
-      new CustomEvent("shelfie:sync-delete-refused", { detail: err?.code ?? err?.message })
+  if (isActive()) {
+    m.deleteDoc(bookDoc(currentHousehold(), id)).catch((err) => {
+      console.warn("sync delete failed:", err.message);
+      window.dispatchEvent(
+        new CustomEvent("shelfie:sync-delete-refused", { detail: err?.code ?? err?.message })
+      );
+    });
+  }
+  if (isPersonalActive()) {
+    m.deleteDoc(personalBookDoc(id)).catch((err) =>
+      console.warn("account sync delete failed:", err.message)
     );
-  });
+  }
 }
 
 // Firestore rejects `undefined` field values; strip them defensively.

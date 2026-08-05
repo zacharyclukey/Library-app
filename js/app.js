@@ -223,8 +223,8 @@ function renderNudge() {
   const el = $("#nudge-card");
   const snoozedUntil = Number(localStorage.getItem(NUDGE_SNOOZE_KEY) ?? 0);
   const candidates = db
-    .getBooksOnShelf("completed")
-    .filter((b) => !myRating(b) && (!b.profile || b.profile === currentProfile()));
+    .getBooksOnShelf("completed", currentProfile())
+    .filter((b) => !myRating(b));
 
   if (Date.now() < snoozedUntil || !candidates.length || !currentProfile()) {
     el.classList.add("hidden");
@@ -275,7 +275,7 @@ function renderNudge() {
 // cataloguing, not this year's reading, and shouldn't inflate the number.
 // Nothing extra to tick: the two paths that count are ones you'd take anyway.
 function countsAsReadHere(book) {
-  return book.shelf === "tbr" || book.reading === true;
+  return myShelf(book) === "tbr" || iAmReading(book);
 }
 
 // Only written when true, so a later move can never clear it.
@@ -285,12 +285,45 @@ function readHerePatch(book, toShelf) {
     : {};
 }
 
+// The one place a book changes shelves, so the personal/household split is
+// decided once. Owning is the household's business and goes on the record;
+// To Read, Finished and Wishlist are yours and go under your name, leaving
+// everyone else's answer about the same book exactly where it was.
+//
+// Note what a personal move deliberately does NOT do: touch `owned`. Sending
+// a book to your Wishlist used to mark the copy unowned, which in a shared
+// library would quietly take away the copy your partner is holding.
+function moveToShelf(b, to, who = currentProfile()) {
+  if (to === "owned") {
+    db.updateBook(b.id, { owned: true, ...readHerePatch(b, to) });
+    // It's on the household shelf now, so it comes off the mover's own pile —
+    // an explicit "none" rather than a deletion, or the record's original
+    // shelf would drift back in underneath them.
+    db.setShelfFor(b.id, who, { shelf: null, reading: false });
+    return;
+  }
+  const finishing = to === "completed";
+  db.setShelfFor(b.id, who, {
+    shelf: to,
+    reading: finishing ? false : db.readingFor(b, who),
+    finishedAt: finishing
+      ? db.finishedAtFor(b, who) ?? new Date().toISOString()
+      : db.finishedAtFor(b, who),
+  });
+  const here = readHerePatch(b, to);
+  if (here.readHere) db.updateBook(b.id, here);
+}
+
 // Did the app just watch someone finish a book, as against watch them
 // catalogue one? The sunset sheet hangs off exactly this: the same test the
 // reading-year stat uses, so a bulk backfill of books read years ago is never
 // interrupted by a sheet asking how each of them was.
+//
+// Read through the mover's own eyes, not the record's — since shelves went
+// per-person, "was this already finished?" is a question only a profile can
+// answer, and the household's `shelf` is merely the fallback.
 function justFinished(book, toShelf) {
-  return toShelf === "completed" && book.shelf !== "completed" && countsAsReadHere(book);
+  return toShelf === "completed" && myShelf(book) !== "completed" && countsAsReadHere(book);
 }
 
 // Putting down a book you were actually reading, without finishing it. The one
@@ -299,7 +332,7 @@ function justFinished(book, toShelf) {
 // js/taste.js, so a book abandoned halfway pushes its subjects away rather
 // than counting as a mild endorsement for having been on the shelf.
 function noteIfAbandoned(book, toShelf) {
-  if (!book.reading || toShelf === "completed" || toShelf === book.shelf) return;
+  if (!iAmReading(book) || toShelf === "completed" || toShelf === myShelf(book)) return;
   signals.log("abandoned", { key: community.bookKey(book), profile: currentProfile() });
 }
 
@@ -311,10 +344,10 @@ function renderStatsScreen() {
     return;
   }
 
-  const finished = db.getBooksOnShelf("completed");
+  const finished = db.getBooksOnShelf("completed", currentProfile());
   const year = new Date().getFullYear();
   const finishedThisYear = finished.filter(
-    (b) => b.readHere && (b.finishedAt ?? "").startsWith(String(year))
+    (b) => b.readHere && (db.finishedAtFor(b, currentProfile()) ?? "").startsWith(String(year))
   );
   const pagesThisYear = finishedThisYear.reduce((n, b) => n + (Number(b.pageCount) || 0), 0);
   const rated = all.map((b) => myRating(b)).filter(Boolean);
@@ -331,7 +364,7 @@ function renderStatsScreen() {
   // Books finished per month this year, as a small bar row.
   const months = Array.from({ length: 12 }, () => 0);
   finishedThisYear.forEach((b) => {
-    const m = new Date(b.finishedAt).getMonth();
+    const m = new Date(db.finishedAtFor(b, currentProfile())).getMonth();
     if (!Number.isNaN(m)) months[m]++;
   });
   const peak = Math.max(...months, 1);
@@ -356,7 +389,7 @@ function renderStatsScreen() {
       ${stat(all.length, "books")}
       ${stat(finished.length, "finished")}
       ${stat(db.getOwnedBooks().length, "owned")}
-      ${stat(all.filter((b) => b.reading).length, "in progress")}
+      ${stat(all.filter(iAmReading).length, "in progress")}
     </div>
 
     <div class="d-section" style="margin-top:1rem">
@@ -563,22 +596,36 @@ function esc(s) {
 // The Owned shelf is "everything you own", so a book you own that also sits
 // on To Read / Finished / Wishlist appears here too — it's a property of the
 // book, not a mutually exclusive location.
-function booksForShelf(shelf) {
-  return shelf === "owned" ? db.getOwnedBooks() : db.getBooksOnShelf(shelf);
+// Owned is the household's shelf — one copy, everybody sees it. The other
+// three are read through somebody's eyes: `who` null means anybody's, which
+// is what the Everyone chip asks for.
+function booksForShelf(shelf, who) {
+  return shelf === "owned" ? db.getOwnedBooks() : db.getBooksOnShelf(shelf, who);
 }
 
-function renderShelf() {
-  let books = booksForShelf(currentShelf);
-  for (const shelf of SHELVES) {
-    $(`#count-${shelf}`).textContent = booksForShelf(shelf).length;
-  }
+// The shelf/reading/finished state for the person holding the phone.
+const myShelf = (b) => db.shelfFor(b, currentProfile());
+const iAmReading = (b) => db.readingFor(b, currentProfile());
+// What to *call* a book's shelf when there's one label's worth of room: your
+// own answer if you've given one, otherwise the household's Owned.
+const displayShelf = (b) => myShelf(b) ?? (b.owned || b.shelf === "owned" ? "owned" : b.shelf);
 
+function renderShelf() {
   const personal = PERSONAL_SHELVES.includes(currentShelf);
-  renderProfileFilter(personal);
-  if (personal && memberFilter !== "all") {
-    const target = memberFilter === "me" ? currentProfile() : memberFilter;
-    books = books.filter((b) => !b.profile || !target || b.profile === target);
+  // Who the shelf is being read as. "Everyone" is null — anyone's copy counts.
+  const target = !personal
+    ? null
+    : memberFilter === "all" ? null
+    : memberFilter === "me" ? currentProfile()
+    : memberFilter;
+
+  let books = booksForShelf(currentShelf, target);
+  // The tab counts always show your own shelves, whatever the filter is set
+  // to — they're how big *your* pile is, not how big the household's is.
+  for (const shelf of SHELVES) {
+    $(`#count-${shelf}`).textContent = booksForShelf(shelf, currentProfile()).length;
   }
+  renderProfileFilter(personal);
   const q = searchQuery.trim().toLowerCase();
   if (q) {
     books = books.filter((b) =>
@@ -589,9 +636,11 @@ function renderShelf() {
   const hadBeforeFilter = books.length;
   books = books.filter((b) => flt.matchesFilter(b, shelfFilter, { myRating: myRating(b) }));
   books = flt.sortBooks(books, shelfSort, { ratingOf: myRating });
-  // What you're reading right now belongs at the top of To Read.
+  // What you're reading right now belongs at the top of To Read — what *she's*
+  // reading doesn't, so this asks about the person the shelf is being read as.
   if (currentShelf === "tbr" && shelfSort === "added") {
-    books = [...books].sort((a, b) => (b.reading ? 1 : 0) - (a.reading ? 1 : 0));
+    const readingNow = (b) => db.readingFor(b, target ?? currentProfile());
+    books = [...books].sort((a, b) => (readingNow(b) ? 1 : 0) - (readingNow(a) ? 1 : 0));
   }
   updateFilterBadge();
 
@@ -631,8 +680,8 @@ function renderHero() {
   }
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const reading = all.filter((b) => b.reading).length;
-  const finished = db.getBooksOnShelf("completed").length;
+  const reading = all.filter(iAmReading).length;
+  const finished = db.getBooksOnShelf("completed", currentProfile()).length;
   const facts = [
     reading ? `${reading} in progress` : null,
     finished ? `${finished} finished` : null,
@@ -742,6 +791,50 @@ function updateBulkBar() {
   $("#bulk-bar").querySelectorAll("[data-bulk-move]").forEach((btn) => {
     btn.disabled = n === 0;
   });
+
+  // Whose books these are. Rebuilt each time because the roster comes from the
+  // shared library and can change while you're standing here; hidden entirely
+  // when there's nobody to hand a book to.
+  const people = libraryPeople();
+  const assign = $("#bulk-assign");
+  assign.classList.toggle("hidden", people.length < 2);
+  if (people.length >= 2) {
+    assign.innerHTML =
+      `<span class="bulk-assign-label">Belongs to</span>` +
+      people
+        .map((p) => `<button class="shelf-pick" data-bulk-assign="${esc(p)}">${esc(p)}</button>`)
+        .join("") +
+      `<button class="shelf-pick" data-bulk-assign="">Shared</button>`;
+    assign.querySelectorAll("[data-bulk-assign]").forEach((btn) => {
+      btn.disabled = n === 0;
+      btn.addEventListener("click", () => bulkAssign(btn.dataset.bulkAssign));
+    });
+  }
+}
+
+// Hand the selection to somebody — or back to the shared pile. One Undo
+// covers the batch, same as a bulk move.
+function bulkAssign(who) {
+  const books = [...selectedIds].map((id) => db.getBook(id)).filter(Boolean);
+  if (!books.length) return;
+  const before = JSON.parse(JSON.stringify(books));
+  books.forEach((b) => db.updateBook(b.id, { profile: who || null }));
+  const n = books.length;
+  setSelectMode(false);
+  navigator.vibrate?.(15);
+  toast(
+    who
+      ? `${n} book${n === 1 ? "" : "s"} now ${esc(who)}'s`
+      : `${n} book${n === 1 ? "" : "s"} back to shared`,
+    {
+      actionLabel: "Undo",
+      onAction: () => {
+        before.forEach((b) => db.replaceBook(b));
+        renderShelf();
+        toast(`Put ${n} book${n === 1 ? "" : "s"} back`);
+      },
+    }
+  );
 }
 
 // Moves the selection, with one Undo covering the whole batch.
@@ -750,14 +843,7 @@ function bulkMove(to) {
   if (!books.length) return;
   const before = JSON.parse(JSON.stringify(books));
   for (const b of books) {
-    const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-    db.updateBook(b.id, {
-      shelf: to,
-      owned,
-      reading: to === "tbr" || to === "owned" ? b.reading ?? false : false,
-      finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
-      ...readHerePatch(b, to),
-    });
+    moveToShelf(b, to);
     seriesCache.delete(b.id);
   }
   social.publishSoon(currentProfile());
@@ -874,7 +960,7 @@ function missingInSeries(b) {
 // the Owned tab lists books that live on other shelves and "remove" could
 // otherwise read as "take it out of this one view".
 function confirmRemoval(b) {
-  const also = b.shelf !== "owned" && b.owned ? " It's on your Owned list too." : "";
+  const also = myShelf(b) && b.owned ? " It's on your Owned list too." : "";
   return confirm(
     `Remove “${b.title}” from your library?\n\n` +
       `This takes it off every shelf, along with your rating and review.${also}\n\n` +
@@ -962,13 +1048,13 @@ function gridCard(b, showNames) {
           </div>
           <div class="cc-side">
           <div class="qa-row">
-            ${b.shelf !== "tbr"
+            ${myShelf(b) !== "tbr"
               ? qaButton({ attr: 'data-qa-move="tbr"', label: "To read", glyph: "books" }) : ""}
-            ${b.shelf === "tbr" || b.shelf === "owned"
+            ${myShelf(b) === "tbr" || !myShelf(b)
               ? qaButton({ attr: "data-qa-reading", glyph: "bookmark",
-                           label: b.reading ? "Stop reading" : "Reading now", on: b.reading })
+                           label: iAmReading(b) ? "Stop reading" : "Reading now", on: iAmReading(b) })
               : ""}
-            ${b.shelf !== "completed"
+            ${myShelf(b) !== "completed"
               ? qaButton({ attr: 'data-qa-move="completed"', label: "Finished", glyph: "check" }) : ""}
           </div>
           <div class="qa-foot">
@@ -985,14 +1071,14 @@ function gridCard(b, showNames) {
         <p class="grid-author">${esc((b.authors ?? []).join(", "))}</p>
       </div>
       <div class="grid-meta">
-        ${b.reading ? `<span class="mini-badge reading" title="Currently reading">${icon("bookOpen")}</span>` : ""}
+        ${iAmReading(b) ? `<span class="mini-badge reading" title="Currently reading">${icon("bookOpen")}</span>` : ""}
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
         ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${icon(MEDIUM_ICON[b.medium])}</span>` : ""}
         ${trackContent() && b.spice ? `<span class="mini-badge spice" title="Spice ${b.spice} of 5">${icon("flame")}${b.spice}</span>` : ""}
         ${trackContent() && !b.spice && ["mature", "explicit"].includes(b.content) ? `<span class="mini-badge mature-tag">18+</span>` : ""}
         ${trackContent() && b.content === "kids" ? `<span class="mini-badge kids-tag">${icon("teddy")}</span>` : ""}
-        ${currentShelf === "owned" && b.shelf !== "owned"
-          ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[b.shelf])}">${SHELF_ICON[b.shelf]}</span>`
+        ${currentShelf === "owned" && myShelf(b)
+          ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[myShelf(b)])}">${SHELF_ICON[myShelf(b)]}</span>`
           : ""}
         ${missing ? `<span class="mini-badge" title="${missing} more in this series">+${missing}</span>` : ""}
         ${showNames && b.profile ? `<span class="mini-badge who">${esc(b.profile[0])}</span>` : ""}
@@ -1024,9 +1110,9 @@ function listCard(b, showNames) {
         <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
         ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
         <div class="badges">
-          ${b.reading ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
-          ${currentShelf === "owned" && b.shelf !== "owned"
-            ? `<span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>`
+          ${iAmReading(b) ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
+          ${currentShelf === "owned" && myShelf(b)
+            ? `<span class="badge shelf-badge">${SHELF_ICON[myShelf(b)]} ${esc(SHELF_LABEL[myShelf(b)])}</span>`
             : ""}
           ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${icon(MEDIUM_ICON[b.medium])} ${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
           ${trackContent() && b.content ? `<span class="badge content-badge">${flt.CONTENT_LABEL[b.content] ?? esc(b.content)}</span>` : ""}
@@ -1356,9 +1442,12 @@ function updateProfileChip() {
 $("#profile-banner").addEventListener("click", () => showScreen("profile"));
 $("#shelf-hero").addEventListener("click", () => showScreen("stats"));
 
-// Names this phone could plausibly belong to: profiles already on books,
-// plus the names of everyone in the shared library.
-function suggestedProfiles() {
+// Everyone this library knows about: names already on books, plus every
+// member of the shared library. Used both for "who is holding this phone"
+// and for "whose book is this" — a member who has added nothing yet still
+// has to be assignable, or the only way to give them a book is to wait for
+// them to buy one.
+function libraryPeople() {
   const names = new Set(allProfiles());
   syncMembers.forEach((mem) => {
     if (mem.name && mem.name !== "Someone") names.add(mem.name);
@@ -1371,17 +1460,55 @@ $("#profile-chip").addEventListener("click", () => showScreen("profile"));
 function renderProfileScreen() {
   const el = $("#profile-content");
   const me = currentProfile();
-  const profiles = suggestedProfiles();
-  el.innerHTML = `
+  const people = libraryPeople();
+  // Signed in, your name is yours: it comes from the account, not from which
+  // phone you picked it up on. Becoming one of the other people in the library
+  // was never a thing anyone wanted to do — it was the only way to hand them a
+  // book, and "Belongs to" does that directly. So the roster below is a roster,
+  // not a set of costumes.
+  const signedIn = !!sync.accountHint();
+  const others = people.filter((p) => p !== me);
+
+  el.innerHTML = signedIn
+    ? `
+    <p>Profiles keep each person's <strong>To Read, Completed and Wishlist</strong>
+    separate, while the <strong>Owned</strong> shelf stays shared.</p>
+    <div class="settings-section">
+      <span class="filter-label">You</span>
+      <div class="profile-list" style="margin-top:0.4rem">
+        <span class="filter-chip big active">${icon("user")} ${esc(me ?? "Not set")}</span>
+      </div>
+      <form id="new-profile-form" class="inline-form" style="margin-top:0.7rem">
+        <input type="text" id="new-profile-input" maxlength="30" autocomplete="off"
+               placeholder="${me ? "Change your name" : "Add a name (e.g. Zach)"}" />
+        <button type="submit" class="primary-btn">${me ? "Rename" : "Create"}</button>
+      </form>
+      <p class="muted" style="font-size:0.78rem;margin-top:0.5rem">
+        This name follows your account, so it's the same on every device you
+        sign in on.</p>
+    </div>
+    <div id="account-content"></div>
+    ${others.length ? `
+    <div class="settings-section">
+      <span class="filter-label">Others in this library</span>
+      <div class="profile-list" style="margin-top:0.4rem">
+        ${others.map((p) => `<span class="filter-chip big">${icon("user")} ${esc(p)}</span>`).join("")}
+      </div>
+      <p class="muted" style="font-size:0.78rem;margin-top:0.5rem">
+        Their shelves are theirs — you can't sign in as them. To put a book on
+        someone's shelf, open it and set <strong>Belongs to</strong>, or select
+        several books and use the bar at the bottom.</p>
+    </div>` : ""}`
+    : `
     <p>Profiles keep each person's <strong>To Read, Completed and Wishlist</strong>
     separate, while the <strong>Owned</strong> shelf stays shared. Pick who's using
     this phone:</p>
-    ${profiles.length && !me
+    ${people.length && !me
       ? `<p class="muted" style="font-size:0.8rem;margin-top:-0.3rem">Tap your name
          if it's here — these come from your shared library and shelves.</p>`
       : ""}
     <div class="profile-list">
-      ${profiles
+      ${people
         .map(
           (p) => `<button class="filter-chip big ${p === me ? "active" : ""}"
                           data-pick-profile="${esc(p)}">${icon("user")} ${esc(p)}</button>`
@@ -1391,30 +1518,35 @@ function renderProfileScreen() {
     <form id="new-profile-form" class="inline-form" style="margin-top:0.7rem">
       <input type="text" id="new-profile-input" placeholder="Add a name (e.g. Zach)"
              autocomplete="off" maxlength="30" />
-      <button type="submit" class="primary-btn">${profiles.length ? "Add" : "Create"}</button>
+      <button type="submit" class="primary-btn">${people.length ? "Add" : "Create"}</button>
     </form>
     <p class="muted" style="font-size:0.78rem">Each phone remembers its own profile.
     Books added before profiles existed are shared — open one and use
-    “Belongs to” to assign it.</p>`;
+    “Belongs to” to assign it.</p>
+    <div id="account-content"></div>`;
 
-  el.querySelectorAll("[data-pick-profile]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      localStorage.setItem(PROFILE_KEY, btn.dataset.pickProfile);
-      memberFilter = "me";
-      updateProfileChip();
-      renderShelf();
-      showScreen("shelves");
-    })
-  );
-  $("#new-profile-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const name = $("#new-profile-input").value.trim();
-    if (!name) return;
+  // Who you are follows the account, not the container the app happens to be
+  // running in — so picking a name here settles it everywhere you're signed in.
+  const setProfile = (name) => {
     localStorage.setItem(PROFILE_KEY, name);
+    sync.saveAccountProfile({ profileName: name }).catch(() => {});
     memberFilter = "me";
     updateProfileChip();
     renderShelf();
     showScreen("shelves");
+  };
+
+  // The account block lives inside this screen now, so it paints after the
+  // markup above has landed.
+  if (sync.isConfigured()) renderAccountScreen();
+
+  el.querySelectorAll("[data-pick-profile]").forEach((btn) =>
+    btn.addEventListener("click", () => setProfile(btn.dataset.pickProfile))
+  );
+  $("#new-profile-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#new-profile-input").value.trim();
+    if (name) setProfile(name);
   });
 }
 
@@ -1499,7 +1631,7 @@ async function handleFoundIsbn(isbn) {
     // worth opening the sheet: scanning a book usually means you now have it
     // in hand, and "it's on your Wishlist" should be one tap from Owned.
     const already = findExisting(book);
-    if (already?.sameEdition && already.book.shelf === "owned") {
+    if (already?.sameEdition && already.book.owned) {
       // If that copy was added by title search it has no edition details;
       // the barcode in your hand is exactly what's missing, so fill them in.
       const vague = !already.book.isbn13;
@@ -1656,7 +1788,7 @@ function findExisting(book) {
 function dupeNote(book) {
   const hit = findExisting(book);
   if (!hit) return "";
-  const where = esc(SHELF_LABEL[hit.book.shelf] ?? "your library");
+  const where = esc(SHELF_LABEL[displayShelf(hit.book)] ?? "your library");
   if (hit.sameEdition) {
     return `<p class="dupe-note">You already have this on your ${where} shelf — picking a
       shelf updates it rather than adding a second one.</p>`;
@@ -1800,8 +1932,8 @@ bookList.addEventListener("click", (e) => {
     return;
   }
   if (e.target.closest("[data-qa-reading]")) {
-    undoable(b.reading ? "No longer reading" : "Started reading", b, () =>
-      db.updateBook(id, { reading: !b.reading })
+    undoable(iAmReading(b) ? "No longer reading" : "Started reading", b, () =>
+      db.setShelfFor(id, currentProfile(), { reading: !iAmReading(b) })
     );
     flippedIds.delete(id);
     renderShelf();
@@ -1819,14 +1951,7 @@ bookList.addEventListener("click", (e) => {
     if (Date.now() - armedAt < ARM_DELAY) return armQuickAction(move);
     disarmQuickAction();
     undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
-      const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-      db.updateBook(id, {
-        shelf: to,
-        owned,
-        reading: to === "completed" ? false : b.reading ?? false,
-        finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
-        ...readHerePatch(b, to),
-      });
+      moveToShelf(b, to);
       social.publishSoon(currentProfile());
     });
     flippedIds.delete(id);
@@ -1966,8 +2091,9 @@ const MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
 // you put it in your reading year. Two selects rather than a date input:
 // month is the right grain, and it behaves the same on every phone.
 function readMonthRow(book) {
-  if (book.shelf !== "completed") return "";
-  const when = book.readHere && book.finishedAt ? new Date(book.finishedAt) : null;
+  if (myShelf(book) !== "completed") return "";
+  const mine = db.finishedAtFor(book, currentProfile());
+  const when = book.readHere && mine ? new Date(mine) : null;
   const valid = when && !Number.isNaN(when.getTime());
   const thisYear = new Date().getFullYear();
   const years = Array.from({ length: 8 }, (_, i) => thisYear - i);
@@ -2029,7 +2155,7 @@ async function openDetail(id) {
     ["ISBN-13", b.isbn13],
     ["ISBN-10", b.isbn10],
     ["Open Library edition", b.editionKey],
-    ["Shelf", SHELF_LABEL[b.shelf] + (b.owned && b.shelf !== "owned" ? " (owned copy)" : "")],
+    ["Shelf", SHELF_LABEL[displayShelf(b)] + (b.owned && displayShelf(b) !== "owned" ? " (owned copy)" : "")],
   ].filter(([, v]) => v);
 
   const heroMeta = [
@@ -2046,8 +2172,8 @@ async function openDetail(id) {
         ${b.subtitle ? `<p class="subtitle">${esc(b.subtitle)}</p>` : ""}
         <p class="hero-meta">${heroMeta.map(esc).join("<br />")}</p>
         <div class="badges">
-          <span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>
-          ${b.reading ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
+          <span class="badge shelf-badge">${SHELF_ICON[displayShelf(b)]} ${esc(SHELF_LABEL[displayShelf(b)])}</span>
+          ${iAmReading(b) ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
         </div>
       </div>
     </div>
@@ -2055,11 +2181,11 @@ async function openDetail(id) {
     ${(() => {
       // Ownership is always editable for To Read / Finished; the medium
       // chips appear only when copy-type tracking is enabled.
-      const readingToggle = b.shelf === "tbr" || b.shelf === "owned"
-        ? `<button class="filter-chip ${b.reading ? "active" : ""}" data-reading-toggle>
-             ${icon("bookOpen")} ${b.reading ? "Reading now" : "Start reading"}</button>`
+      const readingToggle = myShelf(b) === "tbr" || !myShelf(b)
+        ? `<button class="filter-chip ${iAmReading(b) ? "active" : ""}" data-reading-toggle>
+             ${icon("bookOpen")} ${iAmReading(b) ? "Reading now" : "Start reading"}</button>`
         : "";
-      const ownedToggle = b.shelf !== "owned" && b.shelf !== "wishlist"
+      const ownedToggle = myShelf(b) !== "wishlist"
         ? `<button class="filter-chip ${b.owned ? "active" : ""}" data-owned-toggle
              title="Untoggle for library loans, Kindle Unlimited, borrowed audiobooks">
              ${b.owned ? "✓ I own it" : "Not owned"}</button>`
@@ -2077,15 +2203,21 @@ async function openDetail(id) {
         ${mediumChips}${ownedToggle}${readingToggle}
       </div>`;
     })()}
-    ${allProfiles().length ? `
+    ${(() => {
+      // Everyone in the library, not just everyone who already owns something:
+      // handing a new member their first book is exactly when you need this,
+      // and it was the one case the old list couldn't do.
+      const people = libraryPeople();
+      return people.length ? `
     <div class="assign-row">
       <span class="rate-label">Belongs to:</span>
-      ${allProfiles()
+      ${people
         .map((p) => `<button class="filter-chip ${b.profile === p ? "active" : ""}"
                        data-assign="${esc(p)}">${esc(p)}</button>`)
         .join("")}
       <button class="filter-chip ${!b.profile ? "active" : ""}" data-assign="">Shared</button>
-    </div>` : ""}
+    </div>` : "";
+    })()}
     ${trackContent() ? `
     <div class="assign-row">
       <span class="rate-label">Content:</span>
@@ -2153,7 +2285,7 @@ async function openDetail(id) {
 
     <div class="detail-actions">
       ${SHELVES
-        .filter((s) => s !== b.shelf)
+        .filter((s) => s !== (s === "owned" ? (b.owned ? "owned" : null) : myShelf(b)))
         .map((s) => `<button class="secondary-btn" data-move="${s}">Move to ${SHELF_LABEL[s]}</button>`)
         .join("")}
       <button class="danger-btn" data-delete>Remove</button>
@@ -2171,14 +2303,7 @@ async function openDetail(id) {
   $("#detail-content").querySelectorAll("[data-move]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const to = btn.dataset.move;
-      // Moving off the wishlist to owned/tbr/completed means you got the book.
-      const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-      // Finishing a book (or shelving it away) ends the current read.
-      const reading = to === "tbr" || to === "owned" ? b.reading ?? false : false;
-      const finishedAt = to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null;
-      undoable(`Moved to ${SHELF_LABEL[to]}`, b, () =>
-        db.updateBook(id, { shelf: to, owned, reading, finishedAt, ...readHerePatch(b, to) })
-      );
+      undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => moveToShelf(b, to));
       social.publishSoon(currentProfile());
       detailModal.close();
       renderShelf();
@@ -2225,8 +2350,10 @@ async function openDetail(id) {
       openDetail(id);
     })
   );
+  // Reading is a thing a person does, not a property of the copy: she can be
+  // halfway through the book he hasn't opened.
   $("#detail-content").querySelector("[data-reading-toggle]")?.addEventListener("click", () => {
-    db.updateBook(id, { reading: !b.reading });
+    db.setShelfFor(id, currentProfile(), { reading: !iAmReading(b) });
     renderShelf();
     openDetail(id);
   });
@@ -2793,7 +2920,11 @@ function dismissRec(r) {
 function startReading(r) {
   const existing = r.book ?? db.getAllBooks().find((b) => normTitle(b.title) === normTitle(r.title));
   if (existing) {
-    db.updateBook(existing.id, { shelf: "tbr", reading: true });
+    // Through moveToShelf, not a direct write: shelves are one person's answer
+    // now, and setting the record's own `shelf` would put the book on the
+    // whole household's To Read pile.
+    moveToShelf(existing, "tbr");
+    db.setShelfFor(existing.id, currentProfile(), { reading: true });
   } else {
     db.addBook({ ...recToBook(r, "tbr"), reading: true });
   }
@@ -3203,7 +3334,7 @@ async function runExport(format) {
   }
 
   if (format === "csv") {
-    xport.download(`shelfie-${name}.csv`, xport.buildCsv(books, myRating), "text/csv");
+    xport.download(`shelfie-${name}.csv`, xport.buildCsv(books, myRating, displayShelf), "text/csv");
     status("Spreadsheet downloaded.");
     return;
   }
@@ -3234,8 +3365,14 @@ function renderSettingsScreen() {
       <button class="settings-row" data-go="profile">
         <span class="row-main">
           <span class="row-icon">${icon("user")}</span>
-          <span>Profile
-            <span class="row-sub">${me ? esc(me) : "Not set — tap to choose"}</span>
+          <span>You
+            <span class="row-sub">${
+              me
+                ? esc(me) + (sync.isConfigured()
+                    ? sync.accountHint() ? " · " + esc(sync.accountHint()) : " · not signed in"
+                    : "")
+                : "Not set — tap to choose"
+            }</span>
           </span>
         </span>
         <span class="row-go">›</span>
@@ -3395,12 +3532,11 @@ function renderSettingsScreen() {
   el.querySelectorAll("[data-go]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const target = btn.dataset.go;
-      if (target === "profile") showScreen("profile");
-      else if (target === "sync") showScreen("sync");
-      else if (target === "stats") showScreen("stats");
-      else if (target === "friends") showScreen("friends");
-      else if (target === "appearance") showScreen("appearance");
-      else $("#import-input").click();
+      // Anything that names a screen opens it; the import row is the one
+      // that doesn't, so it stays the fallback.
+      if (["profile", "sync", "stats", "friends", "appearance"].includes(target)) {
+        showScreen(target);
+      } else $("#import-input").click();
     })
   );
 }
@@ -3833,6 +3969,184 @@ async function renderFeed() {
   }`;
 }
 
+// ---------- the account screen ----------
+//
+// An account exists to answer one question the app used to get wrong: are you
+// the same person as the one who was here a minute ago in a different window?
+// Without one, the answer lives in this container's storage — and the
+// home-screen app and Safari have different containers, so the same person
+// came out as two. Signing in makes both resolve to one identity, carries the
+// profile name across, and keeps your own library in step even when you're
+// not sharing with anyone.
+// Rendered into the You screen rather than owning one: signing in and being
+// somebody are the same subject, and splitting them across two rows made the
+// app ask twice.
+function renderAccountScreen() {
+  const el = $("#account-content");
+  if (!el) return;
+  if (!sync.isConfigured()) {
+    el.innerHTML = `<p>Accounts need the same free Firebase project as the
+      shared library. <button class="link-btn" data-go="sync">Set that up</button>
+      and this screen will offer sign-in.</p>`;
+    el.querySelector("[data-go]").addEventListener("click", () => showScreen("sync"));
+    return;
+  }
+
+  if (!sync.accountAvailable()) {
+    el.innerHTML = `<p class="muted">Connecting…</p>`;
+    sync.warmup()
+      .then(() => { if (currentScreen === "profile") renderAccountScreen(); })
+      .catch(() => {
+        el.innerHTML = `<p class="sync-error">${icon("alert")} Couldn't reach the
+          sign-in service. Your library is safe on this device — try again when
+          you're back online.</p>`;
+      });
+    return;
+  }
+
+  const email = sync.accountEmail();
+  if (email) {
+    const lib = sync.currentLibraryName();
+    el.innerHTML = `
+      <div class="settings-section">
+        <span class="filter-label">Signed in</span>
+        <p style="margin:0.4rem 0 0">${icon("check")} <strong>${esc(email)}</strong></p>
+        <p class="muted" style="font-size:0.8rem;margin:0.5rem 0 0">
+          You'll be the same person in the home-screen app and in the browser,
+          and on any other device you sign in on. Your profile name
+          ${currentProfile() ? `(<strong>${esc(currentProfile())}</strong>) ` : ""}travels
+          with you.</p>
+        ${lib
+          ? `<p class="muted" style="font-size:0.8rem;margin:0.5rem 0 0">
+              Sharing <strong>${esc(lib)}</strong> — signing in on a new device
+              puts you straight back in, no approval needed.</p>`
+          : `<p class="muted" style="font-size:0.8rem;margin:0.5rem 0 0">
+              ${sync.isPersonalActive() ? icon("check") + " Your library is backed up to this account"
+                : "Your library stays on this device"} — it's yours alone until you
+              join a shared library.</p>`}
+      </div>
+      <div class="settings-section">
+        <div class="detail-actions">
+          <button class="secondary-btn" id="sign-out-btn">Sign out</button>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin:0.4rem 0 0">
+          Signing out leaves your books on this device. It doesn't delete
+          anything from the account.</p>
+      </div>`;
+    el.querySelector("#sign-out-btn").addEventListener("click", async () => {
+      if (!confirm("Sign out of this account on this device?")) return;
+      await sync.signOutAccount();
+      toast("Signed out.");
+      renderProfileScreen();
+      renderSettingsScreen();
+      updateSyncIndicator();
+    });
+    return;
+  }
+
+  // What this device would lose by becoming somebody else. An anonymous user
+  // with books or a library membership is the common case — they've been
+  // using Shelfie for months without an account — and the whole point of
+  // adding one is that it costs them nothing.
+  const bookCount = db.getAllBooks().length;
+  const inLibrary = !!sync.currentHousehold();
+  const hasStake = bookCount > 0 || inLibrary;
+
+  el.innerHTML = `
+    <p>Right now this device is its own island: open Shelfie from your home
+    screen and from Safari and the app treats you as two different people,
+    because each keeps its own storage. An account is how it knows you're you.</p>
+    ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
+    ${hasStake ? `
+    <p class="muted" style="font-size:0.82rem">
+      ${icon("check")} Adding an account keeps everything you already have —
+      ${bookCount ? `all <strong>${bookCount}</strong> book${bookCount === 1 ? "" : "s"}` : "your shelves"}${
+        inLibrary ? ", your place in the shared library," : ","} your ratings and
+      your reviews. It attaches a sign-in to the identity this device already
+      has rather than making a new one, so nothing changes hands.</p>` : ""}
+    <form id="account-form">
+      <div class="inline-form">
+        <input type="email" id="account-email" placeholder="Email" autocomplete="email" />
+      </div>
+      <div class="inline-form">
+        <input type="password" id="account-password" placeholder="Password (6+ characters)"
+               autocomplete="${hasStake ? "new-password" : "current-password"}" />
+      </div>
+      <div class="detail-actions" style="margin-top:0.35rem">
+        ${hasStake ? `
+        <button type="submit" class="primary-btn" data-intent="create">Add an account</button>
+        <button type="submit" class="secondary-btn" style="margin-top:0"
+                data-intent="signin">Sign in to an existing account</button>`
+        : `
+        <button type="submit" class="primary-btn" data-intent="signin">Sign in</button>
+        <button type="submit" class="secondary-btn" style="margin-top:0"
+                data-intent="create">Create account</button>`}
+      </div>
+    </form>
+    <p class="muted" style="font-size:0.78rem;margin-top:0.7rem">
+      This is separate from any shared-library password. Your books stay on
+      this device either way — an account adds a backup of your own library and
+      keeps every window signed in as the same you.</p>`;
+
+  let intent = hasStake ? "create" : "signin";
+  el.querySelectorAll("#account-form [data-intent]").forEach((btn) =>
+    btn.addEventListener("click", () => { intent = btn.dataset.intent; })
+  );
+  el.querySelector("#account-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("#account-email").value.trim();
+    const password = $("#account-password").value;
+    if (!email || !password) return toast("Enter an email and a password.");
+
+    // The one genuinely lossy move in this screen. "Add an account" LINKS —
+    // the uid is kept, so every rating and review this device wrote stays
+    // its own. "Sign in" REPLACES the identity, which is right on a fresh
+    // device and quietly destructive on one that has been in use: the books
+    // survive (they're local, and shared ones live in the household) but
+    // ownership of everything written under the old identity does not. So
+    // say that plainly rather than discovering it later.
+    if (intent === "signin" && hasStake) {
+      const ok = confirm(
+        "Sign in as a different identity?\n\n" +
+        "This device already has its own. Signing in swaps it out, which keeps " +
+        "your books but hands back ownership of the ratings and reviews written " +
+        "here — you'd no longer be able to edit or remove them.\n\n" +
+        "If this is your first account, tap Cancel and use “Add an account” " +
+        "instead — that keeps everything."
+      );
+      if (!ok) return;
+    }
+
+    try {
+      if (intent === "create") await sync.linkAccount(email, password);
+      else await sync.signInAccount(email, password);
+    } catch (err) {
+      toast(err.message, { ms: 8000 });
+      return;
+    }
+    await afterSignIn();
+    toast(intent === "create"
+      ? "Account added — everything on this device came with you."
+      : "Signed in.");
+  });
+}
+
+// Signing in changes who the app thinks you are, so everything keyed to that
+// has to catch up: the account's profile name and library membership, then
+// whichever sync channel that leaves you on.
+async function afterSignIn() {
+  try {
+    await initSync();
+  } catch (err) {
+    syncError = err.message;
+  }
+  updateProfileChip();
+  renderShelf();
+  if (currentScreen === "profile") renderProfileScreen();
+  renderSettingsScreen();
+  updateSyncIndicator();
+}
+
 function renderSyncScreen() {
   const el = $("#sync-content");
 
@@ -4205,8 +4519,50 @@ async function activateNamed(name, password, create) {
   renderSyncScreen();
 }
 
+// Your account decides who you are before anything else does. The home-screen
+// app and Safari are separate storage containers, so each was inventing its
+// own anonymous identity and its own profile — the same person appearing as
+// two different people depending on which icon they tapped. Signing in makes
+// both contexts resolve to one uid, and the account doc carries the profile
+// name and shared-library membership across, so they stop disagreeing.
+async function restoreAccount() {
+  let acct = null;
+  try {
+    acct = await sync.accountBootstrap();
+  } catch {
+    return null; // offline, or the SDK couldn't load — local identity stands
+  }
+  if (!acct) return null;
+
+  // The name travels with the account, so a new device is you rather than a
+  // stranger who has to introduce themselves.
+  //
+  // Awaited, not fired and forgotten: start() writes the library membership to
+  // this same document a moment later, and two un-ordered writes race. Getting
+  // the name in first means the account is never left holding a library but no
+  // idea who you are — which is what a new device reads to answer both.
+  if (acct.profileName && acct.profileName !== currentProfile()) {
+    localStorage.setItem(PROFILE_KEY, acct.profileName);
+    updateProfileChip();
+  } else if (!acct.profileName && currentProfile()) {
+    await sync.saveAccountProfile({ profileName: currentProfile() }).catch(() => {});
+    acct.profileName = currentProfile();
+  }
+
+  // Signed in on a device that isn't in the shared library your account is a
+  // member of: follow the account in rather than asking anyone to approve a
+  // person who is demonstrably already inside.
+  if (acct.libId && !sync.currentHousehold()) {
+    sync.adoptLibrary(acct.libId, acct.libName);
+  }
+  return acct;
+}
+
 async function initSync() {
-  if (sync.isConfigured() && !sync.currentHousehold() && sync.pendingJoin()) {
+  if (!sync.isConfigured()) return;
+  const acct = await restoreAccount();
+
+  if (!sync.currentHousehold() && sync.pendingJoin()) {
     sync.watchPending({
       localBooks: () => db.getAllBooks(),
       onRemote: onRemoteBooks,
@@ -4217,14 +4573,23 @@ async function initSync() {
     });
     updateSyncIndicator();
   }
-  if (sync.isConfigured() && sync.currentHousehold()) {
+
+  if (sync.currentHousehold()) {
     try {
       await sync.start(onRemoteBooks, onSyncError, syncOpts());
     } catch (err) {
       syncError = err.message;
     }
-    updateSyncIndicator();
+  } else if (acct) {
+    // Signed in and sharing with nobody: your own library is the one that
+    // syncs, so the same books are there in every context you sign in to.
+    try {
+      await sync.startPersonal(onRemoteBooks, onSyncError, { localBooks: db.getAllBooks() });
+    } catch (err) {
+      syncError = err.message;
+    }
   }
+  updateSyncIndicator();
 }
 
 // Books scanned before genre support have no subject tags; fetch them
