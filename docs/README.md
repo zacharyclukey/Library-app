@@ -4,9 +4,12 @@ Start wherever fits.
 
 | If you are… | Read |
 |---|---|
+| About to change the app — anyone, first stop | [../CLAUDE.md](../CLAUDE.md) |
 | Not a programmer, and want to understand your own app | [WALKTHROUGH.md](WALKTHROUGH.md) |
 | A programmer seeing this for the first time | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Wondering *why* something is built that way | [DECISIONS.md](DECISIONS.md) |
+| Asking what makes this better than the app someone already has | [PRODUCT.md](PRODUCT.md) |
+| Wondering what it takes to put this on the App Store | [MOBILE.md](MOBILE.md) |
 | Working on Discover, or wondering where recommendations are headed | [RECOMMENDATIONS.md](RECOMMENDATIONS.md) |
 | Reviewing it for safety, or thinking about going public | [SECURITY.md](SECURITY.md) |
 | Debugging, or writing a migration | [DATA.md](DATA.md) |

@@ -281,8 +281,15 @@ someone else can pick it up without a handover:
 - **[docs/SECURITY.md](docs/SECURITY.md)** — what's protected, what isn't, and
   what would have to change before strangers use it.
 - **[docs/DATA.md](docs/DATA.md)** — every field, key and collection.
+- **[docs/PRODUCT.md](docs/PRODUCT.md)** — what this does that other book apps
+  don't, where it's behind, and what it should never become.
+- **[docs/MOBILE.md](docs/MOBILE.md)** — the road to the App Store: what it
+  costs, what the port involves, and what keeps it cheap.
 - **[tests/README.md](tests/README.md)** — ~30 automated suites and what each
   one covers.
+
+Changing the app? Start with **[CLAUDE.md](CLAUDE.md)** — the rules that don't
+bend, the bar every change is held to, and what to run before you push.
 
 ## Making it yours
 

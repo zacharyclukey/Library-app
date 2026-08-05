@@ -12,7 +12,7 @@ Pages. `npm` appears only so the test suite can install a headless browser —
 the app itself never touches `node_modules`.
 
 ```
-~13,900 lines total, none of it compiled
+~14,000 lines total, none of it compiled (plus ~6,000 more of tests)
   js/app.js         4,960   UI, state, event handling, screen routing
   css/styles.css    2,802   tokens, five skins × light/dark, layout
   js/sync.js          818   Firebase household sync, membership, join approval
@@ -202,7 +202,7 @@ route wins**, so catch-all mocks must be registered *before* specific ones.
 
 ## Known soft spots
 
-- `app.js` at 4,555 lines is the obvious refactor target.
+- `app.js` at 4,960 lines is the obvious refactor target.
 - Barcode reading is now entirely on-device (`js/ean13.js`); there is no
   runtime CDN dependency left. The reader is deliberately narrow — EAN-13 and
   UPC-A only — so it would need extending before it could read anything that
