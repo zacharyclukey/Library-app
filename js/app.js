@@ -482,7 +482,7 @@ function undoable(message, book, apply) {
 // sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
 // stay as modals — they're short task flows on top of whatever you're doing.
 
-const SCREENS = ["shelves", "discover", "export", "settings", "profile", "account", "sync", "stats", "friends", "appearance"];
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends", "appearance"];
 const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
 let currentScreen = "shelves";
 
@@ -499,7 +499,7 @@ function showScreen(name, { push = true } = {}) {
   );
 
   // Sub-screens keep their parent's nav item lit.
-  if (["profile", "sync", "friends", "appearance", "account"].includes(name)) $("#settings-btn").classList.add("active");
+  if (["profile", "sync", "friends", "appearance"].includes(name)) $("#settings-btn").classList.add("active");
   if (name === "stats") $("#nav-shelves").classList.add("active");
 
   if (name === "discover") renderDiscover();
@@ -510,7 +510,6 @@ function showScreen(name, { push = true } = {}) {
   else if (name === "stats") renderStatsScreen();
   else if (name === "friends") renderFriendsScreen();
   else if (name === "appearance") renderAppearanceScreen();
-  else if (name === "account") renderAccountScreen();
 
   if (push && history.state?.screen !== name) {
     history.pushState({ screen: name }, "");
@@ -1458,6 +1457,7 @@ function renderProfileScreen() {
         This name follows your account, so it's the same on every device you
         sign in on.</p>
     </div>
+    <div id="account-content"></div>
     ${others.length ? `
     <div class="settings-section">
       <span class="filter-label">Others in this library</span>
@@ -1491,10 +1491,9 @@ function renderProfileScreen() {
       <button type="submit" class="primary-btn">${people.length ? "Add" : "Create"}</button>
     </form>
     <p class="muted" style="font-size:0.78rem">Each phone remembers its own profile.
-    ${sync.isConfigured() ? `Sign in under <strong>Settings → Account</strong> and it
-    follows you instead.` : ""}
     Books added before profiles existed are shared — open one and use
-    “Belongs to” to assign it.</p>`;
+    “Belongs to” to assign it.</p>
+    <div id="account-content"></div>`;
 
   // Who you are follows the account, not the container the app happens to be
   // running in — so picking a name here settles it everywhere you're signed in.
@@ -1506,6 +1505,10 @@ function renderProfileScreen() {
     renderShelf();
     showScreen("shelves");
   };
+
+  // The account block lives inside this screen now, so it paints after the
+  // markup above has landed.
+  if (sync.isConfigured()) renderAccountScreen();
 
   el.querySelectorAll("[data-pick-profile]").forEach((btn) =>
     btn.addEventListener("click", () => setProfile(btn.dataset.pickProfile))
@@ -3051,26 +3054,18 @@ function renderSettingsScreen() {
       <button class="settings-row" data-go="profile">
         <span class="row-main">
           <span class="row-icon">${icon("user")}</span>
-          <span>Profile
-            <span class="row-sub">${me ? esc(me) : "Not set — tap to choose"}</span>
-          </span>
-        </span>
-        <span class="row-go">›</span>
-      </button>
-      ${sync.isConfigured() ? `
-      <button class="settings-row" data-go="account">
-        <span class="row-main">
-          <span class="row-icon">${icon("shield")}</span>
-          <span>Account
+          <span>You
             <span class="row-sub">${
-              sync.accountHint()
-                ? esc(sync.accountHint())
-                : "Not signed in — this device only"
+              me
+                ? esc(me) + (sync.isConfigured()
+                    ? sync.accountHint() ? " · " + esc(sync.accountHint()) : " · not signed in"
+                    : "")
+                : "Not set — tap to choose"
             }</span>
           </span>
         </span>
         <span class="row-go">›</span>
-      </button>` : ""}
+      </button>
       <button class="settings-row" data-go="stats">
         <span class="row-main">
           <span class="row-icon">${icon("books")}</span>
@@ -3228,7 +3223,7 @@ function renderSettingsScreen() {
       const target = btn.dataset.go;
       // Anything that names a screen opens it; the import row is the one
       // that doesn't, so it stays the fallback.
-      if (["profile", "account", "sync", "stats", "friends", "appearance"].includes(target)) {
+      if (["profile", "sync", "stats", "friends", "appearance"].includes(target)) {
         showScreen(target);
       } else $("#import-input").click();
     })
@@ -3672,8 +3667,12 @@ async function renderFeed() {
 // came out as two. Signing in makes both resolve to one identity, carries the
 // profile name across, and keeps your own library in step even when you're
 // not sharing with anyone.
+// Rendered into the You screen rather than owning one: signing in and being
+// somebody are the same subject, and splitting them across two rows made the
+// app ask twice.
 function renderAccountScreen() {
   const el = $("#account-content");
+  if (!el) return;
   if (!sync.isConfigured()) {
     el.innerHTML = `<p>Accounts need the same free Firebase project as the
       shared library. <button class="link-btn" data-go="sync">Set that up</button>
@@ -3685,7 +3684,7 @@ function renderAccountScreen() {
   if (!sync.accountAvailable()) {
     el.innerHTML = `<p class="muted">Connecting…</p>`;
     sync.warmup()
-      .then(() => { if (currentScreen === "account") renderAccountScreen(); })
+      .then(() => { if (currentScreen === "profile") renderAccountScreen(); })
       .catch(() => {
         el.innerHTML = `<p class="sync-error">${icon("alert")} Couldn't reach the
           sign-in service. Your library is safe on this device — try again when
@@ -3727,7 +3726,7 @@ function renderAccountScreen() {
       if (!confirm("Sign out of this account on this device?")) return;
       await sync.signOutAccount();
       toast("Signed out.");
-      renderAccountScreen();
+      renderProfileScreen();
       renderSettingsScreen();
       updateSyncIndicator();
     });
@@ -3832,7 +3831,7 @@ async function afterSignIn() {
   }
   updateProfileChip();
   renderShelf();
-  renderAccountScreen();
+  if (currentScreen === "profile") renderProfileScreen();
   renderSettingsScreen();
   updateSyncIndicator();
 }

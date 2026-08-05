@@ -155,7 +155,7 @@ async function window_(label, books = [], profile = null) {
 const openAccount = async (page) => {
   await page.click("#settings-btn");
   await page.waitForTimeout(400);
-  await page.click('.settings-row[data-go="account"]');
+  await page.click(String.raw`.settings-row[data-go="profile"]`);
   await page.waitForTimeout(900);
 };
 
