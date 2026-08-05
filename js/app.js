@@ -871,6 +871,27 @@ function removeBookEverywhere(b) {
   });
 }
 
+// The facts line on a turned card. Cutting it with an ellipsis mid-word
+// ("A SERIE…") loses the one part that's actually useful — which book in the
+// series this is — and reads as the app failing rather than as a choice. So
+// it steps down through shorter forms until one fits: the whole thing, then
+// the series number without its name, then no series at all. Two lines of
+// wrapping absorb the rest.
+function factsLine(b) {
+  const year = b.publishDate ? String(b.publishDate).match(/\d{4}/)?.[0] : null;
+  const pages = b.pageCount ? `${b.pageCount}pp` : null;
+  const name = b.series?.name ?? null;
+  const pos = b.series?.position != null ? `#${b.series.position}` : null;
+  const join = (...parts) => parts.filter(Boolean).join(" · ");
+
+  const full = join(year, pages, name && [name, pos].filter(Boolean).join(" "));
+  if (full.length <= 38) return full;
+  // The number alone still tells you where you are; the name is on the front.
+  const trimmed = join(year, pages, pos);
+  if (trimmed.length <= 38) return trimmed;
+  return join(year, pages);
+}
+
 function qaButton({ attr, label, on = false }) {
   return `<button class="qa-btn${on ? " on" : ""}" ${attr} title="${esc(label)}">
             <span class="qa-label">${esc(label)}</span>
@@ -895,11 +916,7 @@ function gridCard(b, showNames) {
             <p class="cc-title">${esc(b.title)}</p>
             <p class="cc-author">${esc((b.authors ?? [])[0] ?? "")}</p>
           </div>
-          <p class="qa-facts">${esc([
-            b.publishDate ? String(b.publishDate).match(/\d{4}/)?.[0] : null,
-            b.pageCount ? `${b.pageCount}pp` : null,
-            b.series?.name ? `${b.series.name}${b.series.position ? " #" + b.series.position : ""}` : null,
-          ].filter(Boolean).join(" · "))}</p>
+          <p class="qa-facts">${esc(factsLine(b))}</p>
           <div class="qa-stars">
             ${[1, 2, 3, 4, 5].map((n) =>
               `<button class="${rating >= n ? "filled" : ""}" data-qa-rate="${n}"

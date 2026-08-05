@@ -1323,16 +1323,15 @@ img.cover.missing { display: none; }
   font-size: 0.56rem;
   letter-spacing: 0.055em;
   text-transform: uppercase;
-  height: 1.15rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* One line, always — it sits above a ruled line and mustn't cross it. */
-  white-space: nowrap;
+  /* Up to two lines, and the text itself steps down to a shorter form
+     before it would need a third (see factsLine) — so nothing is ever cut
+     off mid-word. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
-  line-height: 1.15rem;
+  max-height: 2.1rem;
+  line-height: 1.05rem;
   text-align: center;
 }
 .flip-back .qa-btn {
