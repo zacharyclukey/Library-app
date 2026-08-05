@@ -46,6 +46,17 @@ drawn in `currentColor` strokes it picks up the palette and each skin's line
 weight automatically, exactly like the built-ins. A filled or multi-colour
 drawing is used as-is.
 
+### The mark
+
+| Name | Where it appears |
+| --- | --- |
+| `mark` | The Shelfie mark in the top bar, and on an empty shelf |
+
+This one behaves slightly differently from the rest: it keeps a single line
+weight in every aesthetic, where other icons follow the skin's hand. See
+[IDENTITY.md](IDENTITY.md) for why, and for the home-screen icon, which is a
+separate asset entirely.
+
 ### Shelves & status
 
 | Name | Where it appears |
@@ -138,6 +149,21 @@ same deal: same name, same folder.
 | File | What it is |
 | --- | --- |
 | `assets/textures/card-stock.svg` | The paper grain on the back of a book card |
+
+## The home-screen icon
+
+The icon you tap to open Shelfie is the one asset that isn't picked up
+automatically, because a phone's home screen can't be handed an SVG.
+
+| File | What it is |
+| --- | --- |
+| `assets/brand/app-icon.svg` | The artwork — edit this one |
+| `icons/icon-180.png` | Apple touch icon — generated |
+| `icons/icon-192.png` | Manifest icon — generated |
+| `icons/icon-512.png` | Manifest icon — generated |
+
+Edit the SVG, then run `npm run icons` to rewrite all three PNGs from it, and
+commit them together.
 
 ## A note on sizes
 

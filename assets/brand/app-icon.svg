@@ -1,0 +1,74 @@
+<!--
+  The Shelfie app icon: what you tap on a home screen.
+
+  This is the solid twin of the line mark drawn in js/icons.js under the name
+  "mark". They are the same shelf: two spines, a book leaning with its page
+  ends toward you, and a ledge that overhangs. Keep them in step if you
+  redraw either.
+
+  The colours are Reading Room's walnut, parchment and brass, because that is
+  the aesthetic Shelfie opens in. They are deliberately fixed rather than
+  themed: a home-screen icon can't follow a setting that lives inside the app,
+  and an icon that changed under you would stop being recognisable.
+
+  TO REPLACE IT: edit this file, then run `npm run icons`. That rewrites
+  icons/icon-180.png, icon-192.png and icon-512.png from it. Nothing else
+  reads this file, so nothing else needs changing.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="lamp" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffce85" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffce85" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="plinth">
+      <rect width="512" height="512" rx="114"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="114" fill="#4e3522"/>
+
+  <g clip-path="url(#plinth)">
+    <!-- the vertical grain the app bar carries, at icon scale -->
+    <g fill="#ffffff" opacity="0.05">
+      <rect x="26" y="0" width="10" height="512"/>
+      <rect x="94" y="0" width="10" height="512"/>
+      <rect x="188" y="0" width="10" height="512"/>
+      <rect x="286" y="0" width="10" height="512"/>
+      <rect x="366" y="0" width="10" height="512"/>
+      <rect x="452" y="0" width="10" height="512"/>
+    </g>
+    <g fill="#000000" opacity="0.07">
+      <rect x="58" y="0" width="14" height="512"/>
+      <rect x="142" y="0" width="14" height="512"/>
+      <rect x="236" y="0" width="14" height="512"/>
+      <rect x="330" y="0" width="14" height="512"/>
+      <rect x="418" y="0" width="14" height="512"/>
+    </g>
+    <!-- warm light from above, the same move the page makes -->
+    <rect width="512" height="300" fill="url(#lamp)"/>
+  </g>
+
+  <!-- The shelf, drawn on the same 24x24 grid as the line mark so the two stay
+       identical in proportion. The transform reads right to left: take the
+       drawing by its own centre (12, 14.375), scale it to about 72% of the
+       plinth, and set it down a few pixels above the true middle, where the
+       eye reads it as centred. -->
+  <g transform="translate(256 248) scale(19.6) translate(-12 -14.375)">
+    <g fill="#f4ecdc">
+      <!-- ledge, overhanging both ends -->
+      <rect x="2.6" y="19.9" width="18.8" height="1.5" rx="0.75"/>
+      <!-- upright spine -->
+      <path d="M5 19.9v-8.7a1.15 1.15 0 0 1 1.15-1.15h1.3A1.15 1.15 0 0 1 8.6 11.2v8.7z"/>
+      <!-- tall spine, carrying the brass band -->
+      <path d="M9.5 19.9V8.5a1.15 1.15 0 0 1 1.15-1.15h1.5A1.15 1.15 0 0 1 13.3 8.5v11.4z"/>
+      <!-- the book just taken down, leaning, page ends toward you -->
+      <path d="M14.5 19.9 15.55 12a1.15 1.15 0 0 1 1.3-1l2.6.33a1.15 1.15 0 0 1 1 1.29L19 19.9z"/>
+    </g>
+    <!-- the page block of the leaning book, one tone down -->
+    <path d="M17.5 19.9 18.4 12.36l1.05.13a1.15 1.15 0 0 1 1 1.29L19 19.9z"
+          fill="#4e3522" opacity="0.4"/>
+    <!-- the brass band: the one piece of metal Shelfie keeps in every aesthetic -->
+    <rect x="9.5" y="15.8" width="3.8" height="0.9" fill="#bf8a2a"/>
+  </g>
+</svg>

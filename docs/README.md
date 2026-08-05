@@ -11,6 +11,7 @@ Start wherever fits.
 | Debugging, or writing a migration | [DATA.md](DATA.md) |
 | Swapping in your own artwork, icons or colours | [ASSETS.md](ASSETS.md) |
 | Wanting to change how it looks | [../DESIGN.md](../DESIGN.md) |
+| Asking what stays the same in every aesthetic, and where each asset lives | [IDENTITY.md](IDENTITY.md) |
 | Setting up sharing between phones | [../SETUP-SYNC.md](../SETUP-SYNC.md) |
 | Running or writing tests | [../tests/README.md](../tests/README.md) |
 

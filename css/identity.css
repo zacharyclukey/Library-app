@@ -1,0 +1,302 @@
+/* ============================================================
+   Shelfie — the identity layer
+
+   WHAT THIS FILE IS FOR
+
+   Shelfie has five aesthetics and you can add your own, so almost every
+   colour in the app is a variable that a skin is free to change. That is the
+   point: the vibe is yours. But if *everything* were negotiable there would
+   be no Shelfie left underneath — five apps that happen to share a database.
+
+   So a small number of things are held constant, and they live here. They are
+   the parts you'd recognise across a walnut reading room, a sage cottage and
+   a crisp navy screen:
+
+     1. THE MARK        two spines, a book leaning with its page ends toward
+                        you, a ledge that overhangs. One line weight in
+                        every aesthetic.
+     2. THE BOOK        covers are 2:3 and carry a binding shadow down the
+                        left, so a cover is an object and not a thumbnail.
+     3. THE FORE-EDGE   you open a book by its page ends, never by a button
+                        parked on somebody's artwork.
+     4. THE LEDGE       every row of books stands on a shelf.
+     5. THE CARD        the back of a book is the checkout card out of the
+                        pocket: card stock, a ruled head, your marks below.
+     6. THE BRASS       ratings are struck in metal. Every skin picks its own
+                        brass, but there is always one.
+
+   HOW IT IS ENFORCED
+
+   By load order, in index.html:
+
+       css/styles.css     structure and the five aesthetics
+       css/custom.css     YOUR file — colours, fonts, corners, textures
+       css/identity.css   this file
+
+   Later stylesheets win over earlier ones at equal specificity, so your
+   edits in custom.css beat the built-in aesthetics — which is what makes the
+   "Yours" skin work — and the six things above survive whatever you do
+   there. That is the whole mechanism. There is nothing clever in it.
+
+   Note that these rules are still written in theme variables, so they follow
+   your palette. Locked means the shelf is always there, not that it is always
+   brown.
+
+   IF YOU DO WANT TO CHANGE ONE
+
+   You own this repository, so of course you can — edit this file. But do it
+   knowing that's what you're doing, rather than discovering later that the
+   app quietly stopped looking like itself. Each block below says what it is
+   and what swapping it costs.
+
+   Full asset map — every visible thing and the file it comes from:
+   docs/IDENTITY.md
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   Identity constants
+
+   Sizes and proportions the motifs are built from. They're named rather than
+   inlined so that a motif is one number in one place: the cover ratio is read
+   by the grid, the list and the detail sheet, and the day a second surface
+   grows a fore-edge it should be the same 11px as the first.
+   ------------------------------------------------------------ */
+
+:root {
+  --id-cover-ratio: 2 / 3;      /* a book is taller than it is wide */
+  --id-binding-width: 9px;      /* the shaded gutter down a cover's left */
+  --id-edge-width: 11px;        /* the fore-edge you open a card by */
+  --id-ledge-height: 7px;       /* the shelf each row of books stands on */
+  --id-ledge-reach: 0.45rem;    /* how far a ledge runs into the gutters */
+  --id-mark-stroke: 1.9;        /* the mark's hand, in every aesthetic */
+}
+
+/* These six are the ones that genuinely don't move: setting them in
+   custom.css won't take, because this file loads after it. That is the
+   intent — they're the proportions the motifs are built from. Everything
+   else the rules below touch is a theme variable, and yours to change.
+
+   Note what is NOT redeclared here: --gold. The brass is guaranteed by the
+   base palette in styles.css, which every skin inherits, so restating it
+   would buy nothing and would quietly override anyone who set their own in
+   custom.css. Guarantee it once, in the layer people are allowed to beat. */
+
+
+/* ------------------------------------------------------------
+   1. THE MARK
+
+   The drawing lives in js/icons.js under the name "mark", so it paints on
+   first launch with nothing fetched. Replace it by dropping your own at
+   assets/icons/mark.svg; delete that file and this one comes back.
+
+   Every other icon takes its line weight from the aesthetic (--icon-stroke),
+   which is how Dark Academia gets a finer hand than Cottage Garden. The mark
+   opts out. A logo that changed weight between skins would read as a
+   different logo each time, which is the opposite of a logo.
+   ------------------------------------------------------------ */
+
+.brand-mark .ico:not(.ico-file),
+.empty-art .ico:not(.ico-file) {
+  stroke-width: var(--id-mark-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* assets/logo.* — your own mark in the top bar, in place of Shelfie's.
+   This is the sanctioned swap: it's your library, and the top bar is where
+   you'd put your household's own mark. The app icon on the home screen is a
+   separate asset (assets/brand/app-icon.svg) and doesn't follow it. */
+body.has-logo .brand-mark {
+  width: var(--logo-size);
+  height: var(--logo-size);
+  background: var(--logo-url) center / contain no-repeat;
+}
+
+/* assets/empty.* — your own artwork on an empty shelf, same deal. */
+body.has-empty-art .empty-art {
+  display: block;
+  width: 6rem;
+  height: 6rem;
+  margin: 0 auto 0.6rem;
+  background: var(--empty-url) center / contain no-repeat;
+}
+
+/* Both slots have to put the built-in drawing away, not just cover it. These
+   used to rely on `font-size: 0`, which worked back when the mark was an
+   emoji — a text node with no size is gone. It's an <svg> now, and the empty
+   shelf sizes it in rem, so the artwork and the drawing would have stacked. */
+body.has-logo .brand-mark .ico,
+body.has-empty-art .empty-art .ico {
+  display: none;
+}
+
+
+/* ------------------------------------------------------------
+   2. THE BOOK
+
+   A cover is 2:3 with a shaded gutter down its left edge, which is the
+   binding rolling away from you. It is the difference between a shelf of
+   books and a grid of thumbnails, and it costs one pseudo-element.
+
+   The ratio is a variable because the card flip stretches it — see
+   .flip.flipped .cover-wrap in styles.css, which wins on specificity.
+   ------------------------------------------------------------ */
+
+.cover-wrap {
+  position: relative;
+  aspect-ratio: var(--id-cover-ratio);
+  border-radius: 3px 7px 7px 3px;   /* tight at the spine, soft at the edge */
+  overflow: hidden;
+  background: var(--bg-soft);
+  box-shadow: var(--shadow-2);
+  flex: none;
+}
+.cover-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--id-binding-width);
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+
+
+/* ------------------------------------------------------------
+   3. THE FORE-EDGE
+
+   The way into a book's actions is the stack of page ends you'd put a thumb
+   on to open it. It belongs to the object. The alternative — and what this
+   replaced — is a three-dot button parked on top of somebody's cover art.
+   ------------------------------------------------------------ */
+
+.page-edge {
+  position: absolute;
+  top: 6%;
+  bottom: 6%;
+  right: 0;
+  width: var(--id-edge-width);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 0 6px 6px 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--page-edge-ink) 92%, #000) 0 1px,
+      var(--page-edge-ink) 1px 2.5px
+    );
+  box-shadow: inset 1px 0 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: width 0.16s ease, filter 0.16s ease;
+}
+.page-edge:hover { width: calc(var(--id-edge-width) + 3px); filter: brightness(1.06); }
+.page-edge:active { filter: brightness(0.94); }
+.grid-book:hover .page-edge { width: calc(var(--id-edge-width) + 2px); }
+
+
+/* ------------------------------------------------------------
+   4. THE LEDGE
+
+   Rows of books stand on a shelf. Cells in a grid row stretch to the same
+   height, so these line up into one continuous ledge, and each reaches
+   halfway into the column gutters so neighbours meet with no gap.
+   ------------------------------------------------------------ */
+
+.grid-book::after {
+  content: "";
+  margin-top: auto;
+  margin-left: calc(var(--id-ledge-reach) * -1);
+  margin-right: calc(var(--id-ledge-reach) * -1);
+  height: var(--id-ledge-height);
+  border-radius: 2px 2px 3px 3px;
+  background: var(--shelf-grad);
+  box-shadow: 0 3px 6px -1px rgba(40, 25, 10, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* assets/shelf.* — your own ledge, tiled. The sanctioned swap: the shelf is
+   still there, it's just made of your wood now. (This wins on specificity,
+   not on order, so it would hold even if this file loaded first.) */
+body.has-shelf-image .grid-book::after {
+  background: var(--shelf-image) center / auto 100% repeat-x;
+}
+
+
+/* ------------------------------------------------------------
+   5. THE CHECKOUT CARD
+
+   Turn a book over and you get the card out of the pocket inside a library
+   book: card stock, a ruled head naming the book, and your own marks below.
+
+   Everything on it takes its colour from the stock rather than the theme.
+   A checkout card is cream in a dark room too, so theme ink on it would be
+   invisible half the time. That is why --card-stock and --stock-ink exist
+   and why they don't move with the aesthetic.
+
+   Their VALUES live in styles.css, not here, and that is on purpose: what's
+   locked is that a book's back is a printed card, not what colour paper you
+   print it on. Uncomment the block in custom.css section 2 to change the
+   stock, and this file will keep drawing the card with it.
+   ------------------------------------------------------------ */
+
+.flip-back {
+  background-color: var(--card-stock);
+  background-image: var(--card-stock-texture);
+  background-size: 120px 120px;
+  color: var(--stock-ink);
+  border: 1px solid color-mix(in srgb, var(--stock-ink) 22%, transparent);
+  border-radius: 2px;                    /* card stock is guillotined, not rounded */
+  box-shadow: var(--shadow-2), inset 0 0 22px rgba(120, 95, 60, 0.13);
+}
+
+/* The ruled head, like the DATE DUE heading on a real one. Naming the book on
+   the back matters more than it sounds: once a card is turned its cover is
+   gone, and a shelf of turned cards is otherwise identical cream rectangles. */
+.cc-head {
+  border-bottom: 1px solid color-mix(in srgb, var(--stock-ink) 34%, transparent);
+  padding-bottom: 0.28rem;
+}
+.cc-title {
+  font-family: var(--serif);
+  font-weight: 700;
+  text-align: center;
+  color: var(--stock-ink);
+}
+
+
+/* ------------------------------------------------------------
+   6. THE BRASS
+
+   Ratings are struck in metal, not printed in ink. Each aesthetic picks its
+   own brass — Reading Room's lamplit gold, Modern's sharper amber — but a
+   star is never body text.
+
+   These use --gold-ink rather than --gold wherever a star is a glyph on a
+   themed surface. The two are the same metal at different weights: --gold is
+   the bright face, right on a dark ground or as a fill, and --gold-ink is
+   struck deeper so it holds up against pale card. On --card, plain --gold
+   measures between 2.4:1 and 3.5:1 depending on the aesthetic, under the
+   4.5:1 a text glyph needs; --gold-ink clears it in all five, light and dark.
+   ------------------------------------------------------------ */
+
+.grid-rating,
+.card-rating,
+.star-btn.filled,
+.qa-stars button.filled,
+.nudge-stars button:hover {
+  color: var(--gold-ink);
+}
+
+/* The checkout card is the exception, and it has to be. Its stock stays cream
+   in dark mode — that's the point of it — so the ink that works on --card in
+   the dark is a pale gold that vanishes here. Stars on the card were being
+   struck in --gold, which is 2.6:1 on the stock in light mode and 1.6:1 in
+   dark: legible in neither, invisible in one. The card gets its own brass,
+   fixed like the stock is, at 4.8:1 on it. Its value lives in styles.css
+   alongside the rest of the stock. */
+.flip-back .qa-stars button.filled {
+  color: var(--stock-brass);
+}
+.flip-back .qa-btn.on {
+  background: color-mix(in srgb, var(--stock-brass) 22%, transparent);
+  border-color: color-mix(in srgb, var(--stock-brass) 55%, transparent);
+}

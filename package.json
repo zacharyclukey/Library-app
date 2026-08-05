@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "node tests/run.mjs",
-    "start": "node tests/serve.mjs"
+    "start": "node tests/serve.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.47.0"

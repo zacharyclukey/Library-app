@@ -15,6 +15,7 @@ the app itself never touches `node_modules`.
 ~8,900 lines total
   js/app.js         3,685   UI, state, event handling, screen routing
   css/styles.css    2,232   tokens, five skins × light/dark, layout
+  css/identity.css    279   the motifs that survive every skin
   js/sync.js          504   Firebase household sync, membership, join approval
   js/api.js           472   Open Library / Google Books, series detection
   index.html          300   every screen and dialog, statically declared
@@ -131,8 +132,27 @@ Mode is resolved in JS rather than by media query, so each skin needs only one
 dark block, and an inline script in `index.html` applies the saved choice
 before first paint.
 
-`css/custom.css` loads last and is the user's own file — the fifth skin
-("Yours") is defined entirely there.
+Three stylesheets, and the order is the design system:
+
+```
+css/styles.css     structure, and the five aesthetics
+css/custom.css     the user's own file — the fifth skin ("Yours") lives here
+css/identity.css   what stays constant across every aesthetic
+```
+
+Later sheets win at equal specificity, so `custom.css` beats the built-in
+skins and `identity.css` survives both. What it holds is deliberately small —
+the mark, the 2:3 cover and its binding, the fore-edge, the shelf ledge, the
+checkout card, and the rule that ratings are struck in brass. Everything in
+it is still written in theme variables, so it follows the palette; what's
+fixed is the motif, not the colour.
+
+Token *values* that the user is invited to change stay in `styles.css` even
+when the rule consuming them is in `identity.css` — `--card-stock` and
+friends, for instance. Otherwise `identity.css` would load after `custom.css`
+and clobber the override. The split is: values are vibe, motifs are identity.
+
+Full reasoning and the complete asset map: [IDENTITY.md](IDENTITY.md).
 
 ## Offline
 

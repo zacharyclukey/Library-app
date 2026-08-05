@@ -30,6 +30,22 @@ version. Keep them seamlessly tileable and low-contrast, since text sits on top.
 More arrive as the aesthetic work lands; every one of them is a file you can
 replace rather than something baked into the code.
 
+## Brand
+
+`brand/` holds the artwork that stays the same whichever aesthetic you're in.
+
+| File | Where it shows up |
+|---|---|
+| `brand/app-icon.svg` | The icon on your home screen |
+
+Unlike everything else here it isn't picked up automatically — a phone can't
+be handed an SVG. Edit it, then run `npm run icons` to rewrite
+`icons/icon-180.png`, `icon-192.png` and `icon-512.png` from it.
+
+The mark *inside* the app is a drawing rather than a file; replace it at
+`icons/mark.svg` like any other icon. Why these two are separate, and what
+else holds steady across aesthetics: [`../docs/IDENTITY.md`](../docs/IDENTITY.md).
+
 ## Icons
 
 `icons/` replaces the app's own icons, one file per name. Save your drawing as

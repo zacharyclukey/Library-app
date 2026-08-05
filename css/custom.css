@@ -3,7 +3,17 @@
 
    This file is yours. Nothing else in the app writes to it, so you can
    change it freely and updates to the app won't fight your edits. It loads
-   last, which means anything you put here wins over the built-in styling.
+   after the five built-in aesthetics, which means anything you put here
+   wins over them.
+
+   One file loads after this one: css/identity.css. It holds the handful of
+   things that stay the same in every aesthetic — the mark, the shape of a
+   book, the fore-edge you open a card by, the ledge each row stands on, the
+   checkout card, and the brass the stars are struck in. They're what keeps
+   a walnut reading room and a crisp navy screen recognisably the same app.
+   Nothing on this page is affected by that; every knob below works exactly
+   as described. See docs/IDENTITY.md if you're curious, or if you decide you
+   do want to change one after all.
 
    Everything below is switched off (commented out with slashes and stars,
    like this comment). To turn a line on, delete the opening and closing
@@ -40,7 +50,7 @@
   /* Text */
   --ink: #2f2b26;         /* main text */
   --ink-soft: #58514a;    /* secondary text */
-  --muted: #7d746a;       /* captions and hints */
+  --muted: #6e6459;       /* captions and hints */
 
   /* The main colour: buttons, the selected tab, active chips */
   --accent: #6a5a48;
@@ -139,6 +149,20 @@
 /* Remove the warm glow at the top of the page.
 
 :root { --page-glow: none; }
+*/
+
+/* The checkout card on the back of a book: its stock, its ink, and the
+   brass its stars are struck in. These deliberately don't follow the
+   aesthetic — a checkout card is cream in a dark room too — so they're set
+   here rather than per-skin. Uncomment to print your cards on different
+   paper. Keep the ink dark and the stock pale, or swap both.
+
+:root {
+  --card-stock: #f3ead6;
+  --stock-ink: #4a3b28;
+  --stock-brass: #856013;
+  --page-edge-ink: #d9cdb4;
+}
 */
 
 

@@ -40,6 +40,20 @@
   /* Icon personality: each aesthetic sets its own hand. */
   --icon-stroke: 1.7;
   --icon-cap: round;
+
+  /* The checkout card on the back of a book, and the page block down the
+     fore-edge you open it by. These deliberately do NOT move with the
+     aesthetic: a checkout card is cream in a dark room too, so theme ink on
+     it would be invisible half the time.
+
+     They live here, in the sheet that loads first, so css/custom.css can
+     still override them — what's held constant in css/identity.css is that a
+     book's back is a printed card, not what paper it's printed on. */
+  --card-stock: #f3ead6;        /* the paper the card is printed on */
+  --stock-ink: #4a3b28;         /* everything printed or written on it */
+  --stock-brass: #856013;       /* stars struck on the card, 4.8:1 on the stock */
+  --card-stock-texture: url("../assets/textures/card-stock.svg");
+  --page-edge-ink: #d9cdb4;     /* the colour of a page block */
 }
 
 .ico {
@@ -265,7 +279,7 @@
   --muted: #97866f;
   --line: #362a23;
 
-  --accent: #b5566b;
+  --accent: #cc7488;   /* lifted from #b5566b: the old rose read at 3.6:1 on card */
   --accent-ink: #1b1411;
   --accent-soft: #2c1d21;
   --accent-border: #452c33;
@@ -345,7 +359,7 @@
   --muted: #8b93a3;
   --line: #2c3342;
 
-  --accent: #5b7fd1;
+  --accent: #7c9ee0;   /* lifted from #5b7fd1: the old blue read at 4.2:1 on card */
   --accent-ink: #0d1119;
   --accent-soft: #232b3c;
   --accent-border: #333d52;
@@ -775,7 +789,7 @@ body {
    them live with the layouts they belong to, near the bottom of this file. */
 .own-flag .ico { vertical-align: -0.16em; }
 .brand-mark .ico { width: 1.35rem; height: 1.35rem; }
-.empty-art .ico { width: 2.8rem; height: 2.8rem; opacity: 0.5; }
+.empty-art .ico { width: 4.2rem; height: 4.2rem; opacity: 0.4; }
 .sync-error .ico { vertical-align: -0.16em; margin-right: 0.15rem; }
 
 /* Heads-up in the add dialog when the book is already on a shelf. */
@@ -882,23 +896,8 @@ body {
    Covers (shared by grid, list, modals)
    ============================================================ */
 
-.cover-wrap {
-  position: relative;
-  aspect-ratio: 2 / 3;
-  border-radius: 3px 7px 7px 3px;
-  overflow: hidden;
-  background: var(--bg-soft);
-  box-shadow: var(--shadow-2);
-  flex: none;
-}
-.cover-wrap::after {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 9px;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
-  pointer-events: none;
-}
+/* .cover-wrap and its binding shadow are identity — see css/identity.css. */
+
 .cover-fallback {
   position: absolute;
   inset: 0;
@@ -957,20 +956,7 @@ img.cover.missing { display: none; }
   cursor: pointer;
   transition: transform 0.15s;
 }
-/* The wooden ledge each row of books sits on. Cells in a grid row stretch to
-   the same height, so these line up into one continuous shelf. */
-.grid-book::after {
-  content: "";
-  margin-top: auto;
-  /* Reach halfway into the column gutters so neighbouring ledges meet and
-     read as one continuous shelf across the row. */
-  margin-left: -0.45rem;
-  margin-right: -0.45rem;
-  height: 7px;
-  border-radius: 2px 2px 3px 3px;
-  background: var(--shelf-grad);
-  box-shadow: 0 3px 6px -1px rgba(40, 25, 10, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
-}
+/* The wooden ledge each row of books stands on is identity — css/identity.css. */
 .grid-book > div:last-of-type { margin-bottom: 0.55rem; }
 .grid-book:hover { transform: translateY(-3px); }
 .grid-book:hover .cover-wrap { box-shadow: var(--shadow-3); }
@@ -1070,7 +1056,10 @@ img.cover.missing { display: none; }
   padding: 0 1.5rem;
   line-height: 1.6;
 }
-.empty-art { font-size: 2.8rem; display: block; opacity: 0.5; margin-bottom: 0.6rem; }
+/* The mark on an empty shelf. Opacity lives on the drawing, not here: it used
+   to be set on both, and since opacity multiplies down the tree the mark was
+   painting at 0.25 — a ghost on the first screen a new user ever sees. */
+.empty-art { display: block; margin-bottom: 0.75rem; }
 .empty-state p { margin: 0 0 1rem; }
 
 /* ---------- A–Z rail & the gentle rating nudge ---------- */
@@ -1223,35 +1212,10 @@ img.cover.missing { display: none; }
   transition: transform 0.4s cubic-bezier(0.3, 0.9, 0.4, 1);
 }
 .flip-front { transform: rotateY(0deg); position: relative; }
-/* The way into a book's actions is the fore-edge of the book itself — the
-   stack of page ends you'd put a thumb on to open it. It belongs to the
-   object instead of floating on top of the artwork, which is what the old
-   three-dot button did: a UI control parked on somebody's cover. */
-.page-edge {
-  position: absolute;
-  top: 6%;
-  bottom: 6%;
-  right: 0;
-  width: 11px;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  border-radius: 0 6px 6px 0;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--page-edge-ink, #d9cdb4) 92%, #000) 0 1px,
-      var(--page-edge-ink, #d9cdb4) 1px 2.5px
-    );
-  box-shadow: inset 1px 0 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.22);
-  transition: width 0.16s ease, filter 0.16s ease;
-}
-.page-edge:hover { width: 14px; filter: brightness(1.06); }
-.page-edge:active { filter: brightness(0.94); }
-.grid-book:hover .page-edge { width: 13px; }
-/* The back is the checkout card out of the pocket inside a library book:
-   card stock, a ruled head, and your own marks on it. The texture is a file
-   you can replace — assets/textures/card-stock.svg. */
+
+/* The fore-edge you open a book by, and the card stock on the back of it, are
+   both identity — the rules that define them live in css/identity.css. What's
+   left here is the layout around them. */
 .flip-back {
   position: absolute;
   inset: 0;
@@ -1260,32 +1224,12 @@ img.cover.missing { display: none; }
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  background-color: var(--card-stock, #f3ead6);
-  background-image: var(--card-stock-texture, url("../assets/textures/card-stock.svg"));
-  background-size: 120px 120px;
-  color: var(--stock-ink, #4a3b28);
-  border: 1px solid color-mix(in srgb, var(--stock-ink, #4a3b28) 22%, transparent);
-  border-radius: 2px;
-  box-shadow: var(--shadow-2), inset 0 0 22px rgba(120, 95, 60, 0.13);
   padding: 0.5rem 0.42rem 0.45rem;
-}
-/* The ruled line under the head, like the DATE DUE heading on a real one. */
-/* The head of a checkout card: what the book is, then a ruled line, then
-   the marks. Naming the book on the back matters more than it sounds — once
-   a card is turned its cover is gone, and a shelf of turned cards is
-   otherwise a shelf of identical cream rectangles. */
-.cc-head {
-  border-bottom: 1px solid color-mix(in srgb, var(--stock-ink, #4a3b28) 34%, transparent);
-  padding-bottom: 0.28rem;
 }
 .cc-title {
   margin: 0;
-  font-family: var(--serif);
   font-size: 0.72rem;
   line-height: 1.2;
-  font-weight: 700;
-  text-align: center;
-  color: var(--stock-ink, #4a3b28);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1296,7 +1240,7 @@ img.cover.missing { display: none; }
   font-size: 0.55rem;
   line-height: 1.2;
   text-align: center;
-  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 62%, transparent);
+  color: color-mix(in srgb, var(--stock-ink) 62%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1319,7 +1263,7 @@ img.cover.missing { display: none; }
    a checkout card is cream in a dark room too, so theme ink on it would be
    invisible half the time. */
 .flip-back .qa-facts {
-  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 68%, transparent);
+  color: color-mix(in srgb, var(--stock-ink) 68%, transparent);
   font-size: 0.56rem;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -1336,19 +1280,19 @@ img.cover.missing { display: none; }
   text-align: center;
 }
 .flip-back .qa-btn {
-  background: color-mix(in srgb, var(--stock-ink, #4a3b28) 6%, transparent);
-  border-color: color-mix(in srgb, var(--stock-ink, #4a3b28) 26%, transparent);
-  color: var(--stock-ink, #4a3b28);
+  background: color-mix(in srgb, var(--stock-ink) 6%, transparent);
+  border-color: color-mix(in srgb, var(--stock-ink) 26%, transparent);
+  color: var(--stock-ink);
 }
 .flip-back .qa-btn.on {
   background: color-mix(in srgb, var(--gold) 26%, transparent);
   border-color: color-mix(in srgb, var(--gold) 55%, transparent);
 }
-.flip-back .qa-stars button { color: color-mix(in srgb, var(--stock-ink, #4a3b28) 40%, transparent); }
+.flip-back .qa-stars button { color: color-mix(in srgb, var(--stock-ink) 40%, transparent); }
 .flip-back .qa-stars button.filled { color: var(--gold); }
 .flip-back .qa-remove {
-  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 55%, transparent);
-  border-color: color-mix(in srgb, var(--stock-ink, #4a3b28) 26%, transparent);
+  color: color-mix(in srgb, var(--stock-ink) 55%, transparent);
+  border-color: color-mix(in srgb, var(--stock-ink) 26%, transparent);
 }
 .flip-back .qa-remove:hover { color: var(--red); border-color: var(--red); background: transparent; }
 .flip-back .qa-row { margin-top: 0.3rem; gap: 0.28rem; }
@@ -1357,7 +1301,7 @@ img.cover.missing { display: none; }
    one printed thing instead of four stacked widgets. */
 .flip-back .qa-stars {
   padding: 0.3rem 0;
-  border-bottom: 1px dashed color-mix(in srgb, var(--stock-ink, #4a3b28) 22%, transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--stock-ink) 22%, transparent);
 }
 .flip-back .qa-btn { padding: 0.34rem 0.18rem; }
 .flip-back .qa-label { font-size: 0.63rem; }
@@ -1477,13 +1421,8 @@ img.cover.missing { display: none; }
   --header-image-opacity: 0.35;
 }
 
-/* assets/logo.* — replaces the emoji brand mark. */
-body.has-logo .brand-mark {
-  width: var(--logo-size);
-  height: var(--logo-size);
-  background: var(--logo-url) center / contain no-repeat;
-  font-size: 0; /* hides the emoji underneath */
-}
+/* assets/logo.* replaces the Shelfie mark in the top bar. That rule sits with
+   the mark itself, in css/identity.css. */
 
 /* assets/header.* — a texture layered over the header colour. */
 body.has-header-image .app-bar::before {
@@ -1497,21 +1436,11 @@ body.has-header-image .app-bar::before {
 body.has-header-image .app-bar { position: relative; }
 body.has-header-image .app-bar > * { position: relative; z-index: 1; }
 
-/* assets/shelf.* — a tiling strip in place of the painted ledge. */
-body.has-shelf-image .grid-book::after {
-  background: var(--shelf-image) center / auto 100% repeat-x;
-}
+/* assets/shelf.* re-surfaces the ledge. That rule sits with the ledge itself,
+   in css/identity.css. */
 
-/* assets/empty.* — artwork on an empty shelf. */
-body.has-empty-art .empty-art {
-  display: block;
-  width: 6rem;
-  height: 6rem;
-  margin: 0 auto 0.6rem;
-  background: var(--empty-url) center / contain no-repeat;
-  font-size: 0;
-  opacity: 1;
-}
+/* assets/empty.* replaces the mark on an empty shelf. That rule sits with the
+   mark itself, in css/identity.css. */
 
 /* ============================================================
    Selecting several books

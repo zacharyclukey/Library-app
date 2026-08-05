@@ -12,6 +12,17 @@ anything else, and app updates won't overwrite any of them.
 There's no build step and nothing to install. Change a file, push it, and the
 app updates.
 
+**One thing to know before you start.** A handful of things stay the same in
+every aesthetic — the mark, the shape of a book, the fore-edge you open a card
+by, the ledge each row stands on, the checkout card, and the brass the stars
+are struck in. They're what makes a walnut reading room and a crisp navy
+screen recognisably the same app. They live in `css/identity.css`, which loads
+*after* your file, so nothing you do below will accidentally dissolve them.
+Everything on this page still works exactly as described.
+
+If you want the reasoning, or a full list of which file every single asset
+comes out of: [`docs/IDENTITY.md`](docs/IDENTITY.md).
+
 ---
 
 ## The fastest possible change: pictures
@@ -41,6 +52,15 @@ comes back, so nothing you try is permanent.
 For example, the flame that stands for spice lives at `assets/icons/flame.svg`.
 The full list of names, and what each one is used for, is in
 [`docs/ASSETS.md`](docs/ASSETS.md).
+
+One name is special: `mark` is the Shelfie mark in the top bar and on an empty
+shelf. Unlike the others it keeps one line weight in every aesthetic, because a
+logo that changed thickness between skins would read as a different logo each
+time. It used to share a drawing with `books`, the Shelves tab icon — they're
+separate now, so replacing the tab icon no longer restyles the brand.
+
+The home-screen icon is a different thing again — see
+[`docs/IDENTITY.md`](docs/IDENTITY.md).
 
 Two ways your drawing can behave, and the app works out which you meant:
 
