@@ -113,6 +113,8 @@ await page.waitForTimeout(200);
 // --- Theme switch from settings still applies ---
 await page.click("#settings-btn");
 await page.waitForTimeout(300);
+await page.click('[data-go="appearance"]');
+await page.waitForTimeout(300);
 await page.click('[data-skin="dark-academia"]');
 await page.waitForTimeout(300);
 console.log("19. theme switch works on screen:", await page.getAttribute("html", "data-skin"));
