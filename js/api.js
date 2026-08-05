@@ -281,6 +281,39 @@ export async function fetchWorkSubjects(workKey) {
 // so this deliberately does NOT require a rating — callers score results
 // instead, which keeps the candidate pool from collapsing to the handful of
 // heavily-rated titles (manga volumes, mostly).
+// Open Library rate-limits bursts on /search.json. Discover builds a picture
+// of your taste from a dozen separate queries — every author you rate highly,
+// every genre on your shelves — and firing them all at once comes back
+// refused across the board, which the app can only report as "Open Library
+// isn't answering". Scanning keeps working throughout, because an ISBN lookup
+// is a different, cheaper endpoint; that mismatch is the tell.
+//
+// So ranked searches go through a single queue with a gap between them, and a
+// refusal is given one second chance. Discover takes a few seconds longer and
+// actually returns something.
+let queue = Promise.resolve();
+const QUERY_GAP = 220;
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function queued(run) {
+  const result = queue.then(run, run);
+  // The queue advances whether or not the query worked — one failure must not
+  // strand everything behind it.
+  queue = result.then(() => pause(QUERY_GAP), () => pause(QUERY_GAP));
+  return result;
+}
+
+// 429 is the explicit refusal; 503 is what a struggling Open Library returns
+// under load. Both are worth one more try. A 404 or a 400 is an answer.
+const worthRetrying = (status) => status === 429 || status === 503 || status === 502;
+
+async function fetchRanked(url) {
+  const res = await queued(() => fetch(url));
+  if (!worthRetrying(res.status)) return res;
+  await pause(1200);
+  return queued(() => fetch(url));
+}
+
 export async function searchRanked(query, { limit = 20, sort = "rating" } = {}) {
   const fields =
     "key,title,author_name,first_publish_year,cover_i,ratings_average,ratings_count," +
@@ -289,7 +322,7 @@ export async function searchRanked(query, { limit = 20, sort = "rating" } = {}) 
     `${OL}/search.json?q=${encodeURIComponent(query)}` +
     (sort ? `&sort=${sort}` : "") +
     `&fields=${fields}&limit=${limit}`;
-  const res = await fetch(url);
+  const res = await fetchRanked(url);
   if (!res.ok) return [];
   noteSearchReachable();
   // One unusable row must not cost the whole list: a null in `docs` used to
