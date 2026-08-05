@@ -120,9 +120,11 @@ In order:
 3. **Moderation**: report, block, and content removal for reviews and names.
 4. **Privacy policy, terms, and a real account-deletion path.** Data export
    already exists.
-5. **Vendor the ZXing scanner fallback** — it currently loads from a CDN at
-   runtime, which is both an availability and a supply-chain concern.
-6. **Rate limiting**, via App Check or Cloud Functions.
+5. **Rate limiting**, via App Check or Cloud Functions.
+
+The scanner's CDN dependency that used to sit on this list is gone: barcode
+reading is done on-device by `js/ean13.js`, so no third-party code is fetched
+at runtime.
 
 Items 1–3 are the ones that make it *unsafe* rather than merely imperfect.
 
