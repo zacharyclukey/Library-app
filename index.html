@@ -266,20 +266,25 @@
         <button class="filter-chip" data-medium="audio"><span data-ico="headphones"></span><span>Audiobook / Audible</span></button>
       </div>
     </div>
-    <div class="shelf-choice">
-      <button class="shelf-pick" data-add-shelf="owned"><span data-ico="books"></span> Owned</button>
-      <button class="shelf-pick" data-add-shelf="tbr"><span data-ico="bookmark"></span> To Read</button>
-      <button class="shelf-pick" data-add-shelf="completed"><span data-ico="check"></span> Finished</button>
-      <button class="shelf-pick" data-add-shelf="wishlist"><span data-ico="gift"></span> Wishlist</button>
-    </div>
     <label class="also-own">
       <input type="checkbox" id="also-own-checkbox" checked />
       <span>
-        <strong>I own a copy</strong> — a book you put on To&nbsp;Read or Finished
-        shows on your Owned shelf as well, so the household list stays true.
-        Uncheck it for library loans, Kindle&nbsp;Unlimited or borrowed audiobooks.
+        <strong>I own a copy</strong> — uncheck for library loans,
+        Kindle&nbsp;Unlimited or borrowed audiobooks.
       </span>
     </label>
+    <div class="shelf-choice" id="shelf-choice">
+      <button class="shelf-pick" data-add-shelf="tbr">
+        <span data-ico="bookmark"></span> To Read<span class="pick-also">+ Owned</span>
+      </button>
+      <button class="shelf-pick" data-add-shelf="completed">
+        <span data-ico="check"></span> Finished<span class="pick-also">+ Owned</span>
+      </button>
+      <button class="shelf-pick" data-add-shelf="owned">
+        <span data-ico="books"></span> Owned<span class="pick-also">only</span>
+      </button>
+      <button class="shelf-pick" data-add-shelf="wishlist"><span data-ico="gift"></span> Wishlist</button>
+    </div>
   </dialog>
 
   <!-- ============ Book detail modal ============ -->

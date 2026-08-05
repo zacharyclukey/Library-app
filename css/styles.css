@@ -1849,11 +1849,27 @@ body.selecting {
 }
 .shelf-pick:hover { border-color: var(--accent); transform: translateY(-2px); }
 .shelf-pick span { font-size: 1.05rem; }
+/* Each button spells out what you'll actually end up with, so Owned and
+   To Read stop reading as a choice between the two. */
+.pick-also { display: none; }
+/* On its own line under the label, so a long one never squeezes "To Read"
+   into two lines just to make room for it. */
+.shelf-choice.owning .pick-also { display: block; }
+.shelf-choice.owning .shelf-pick { flex-wrap: wrap; }
+.shelf-pick .pick-also {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  margin-top: 0.12rem;
+}
 .also-own {
   display: flex;
   gap: 0.5rem;
   align-items: start;
-  margin-top: 0.85rem;
+  margin: 0.85rem 0 0.7rem;
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.45;

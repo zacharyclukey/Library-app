@@ -1631,6 +1631,16 @@ function showNextPendingBook() {
   if (!confirmModal.open) confirmModal.showModal();
 }
 
+// "Owned" and "To Read" look like rival choices, so a book you own and mean
+// to read next looks impossible — you pick one and lose the other. It isn't:
+// ownership is a separate flag, and To Read / Finished carry it. Rather than
+// explain that anywhere, each button says what you'll actually get.
+function markShelfPicks() {
+  $("#shelf-choice").classList.toggle("owning", $("#also-own-checkbox").checked);
+}
+$("#also-own-checkbox").addEventListener("change", markShelfPicks);
+markShelfPicks();
+
 document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
   btn.addEventListener("click", () => {
     const scanned = pendingBooks.shift();
