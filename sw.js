@@ -8,7 +8,7 @@
 // best-effort so shelves look right offline; API calls (Open Library,
 // Google Books, Firebase) always go to the network.
 
-const SHELL_CACHE = "shelfie-shell-v7";
+const SHELL_CACHE = "shelfie-shell-v8";
 const COVER_CACHE = "shelfie-covers-v1";
 
 const SHELL = [
@@ -16,6 +16,7 @@ const SHELL = [
   "./index.html",
   "./css/styles.css",
   "./css/custom.css",
+  "./css/identity.css",
   "./manifest.webmanifest",
   "./js/app.js",
   "./js/api.js",

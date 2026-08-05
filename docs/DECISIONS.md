@@ -172,8 +172,35 @@ browser fetches them to paint anyway.
 
 It loads last and is the user's file.
 
-*Why:* personal styling and app updates must not fight. Anything in it wins,
-and nothing the maintainer does can overwrite it.
+*Why:* personal styling and app updates must not fight. Anything in it wins
+over the built-in aesthetics, and nothing the maintainer does can overwrite it.
+
+### One sheet loads after the user's, and holds six things
+
+`css/identity.css` is last in `index.html`, after `custom.css`. It carries the
+mark, the 2:3 cover and its binding shadow, the fore-edge, the shelf ledge, the
+checkout card, and the rule that ratings are struck in brass.
+
+*Why:* five aesthetics with every colour negotiable is five apps that share a
+database. Something has to be the same in all of them or there's no Shelfie
+underneath the skin. These six are structural rather than chromatic, so they
+survive a palette swap without fighting it — every rule in the file is still
+written in theme variables, so the shelf follows your colours. What's fixed is
+that there *is* a shelf.
+
+*Cost:* a cascade trap, and it bit during the work. Anything `identity.css`
+declares in `:root` beats the same declaration in `custom.css`, which is fine
+for the locked proportions and wrong for everything else. So token *values*
+the user is invited to change — `--card-stock`, `--stock-ink`, `--gold` — are
+declared in `styles.css`, which loads first, while the rules consuming them
+live in `identity.css`. Values are vibe; motifs are identity. Get that backwards
+and you silently override the person you meant to serve.
+
+*Alternative rejected:* CSS `@layer`, which expresses this directly. It would
+need `@import ... layer()` from inside `styles.css`, since a `<link>` can't be
+assigned a layer — serialising two stylesheet fetches on first load, and
+failing closed on any browser that doesn't support it, taking the "Yours" skin
+down with it. Load order does the same job with nothing to support.
 
 ---
 

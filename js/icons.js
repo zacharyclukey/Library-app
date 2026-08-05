@@ -24,6 +24,22 @@
 // what each one is for.
 
 const PATHS = {
+  // The Shelfie mark. Two spines, a book leaning with its page ends toward
+  // you, and a ledge that overhangs both ends — the same shelf as the
+  // home-screen icon in assets/brand/app-icon.svg, on the same 24x24 grid.
+  // The leaning one is a book just taken down; its fore-edge is the same
+  // detail the app uses as the way into a card.
+  //
+  // It is deliberately its own name rather than sharing `books`, which is the
+  // icon for the Shelves tab. They looked alike enough to share a slot and
+  // never were: replacing the artwork on a tab shouldn't restyle the brand,
+  // and putting your own logo in the top bar shouldn't repaint six buttons.
+  //
+  // Unlike every other icon here, the mark keeps one line weight in all five
+  // aesthetics — see css/identity.css. A logo that changed hand between skins
+  // would be a different logo each time.
+  mark: '<path d="M2.6 20.6h18.8"/><path d="M5 20.6V11.3a1.1 1.1 0 0 1 1.1-1.1h1.4a1.1 1.1 0 0 1 1.1 1.1v9.3"/><path d="M9.5 20.6V8.5a1.1 1.1 0 0 1 1.1-1.1h1.6a1.1 1.1 0 0 1 1.1 1.1v12.1"/><path d="M9.5 16.2h3.8"/><path d="M14.5 20.6l1.05-8.6a1.15 1.15 0 0 1 1.3-1l2.6.32a1.15 1.15 0 0 1 1 1.3L19 20.6z"/><path d="M17.5 20.6l1.4-7.6"/>',
+
   // shelves & status
   books: '<path d="M4 19V6a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v13"/><path d="M9 19V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v12"/><path d="M14.5 19 16 7.2a1 1 0 0 1 1.1-.9l2.4.3a1 1 0 0 1 .9 1.1L18.8 19"/><path d="M3 19h18"/>',
   bookmark: '<path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z"/>',

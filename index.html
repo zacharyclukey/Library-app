@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#22304d" />
+  <meta name="theme-color" content="#4e3522" />
   <title>Shelfie — Your Book Library</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -29,14 +29,20 @@
       }
     })();
   </script>
+  <!-- Three sheets, and the order is the whole design system:
+       styles.css   structure, and the five aesthetics
+       custom.css   yours — loads after the aesthetics, so your colours win
+       identity.css the handful of things that are Shelfie in every skin,
+                    last so they survive whatever the other two do.
+       See DESIGN.md to change your colours, docs/IDENTITY.md for the rest. -->
   <link rel="stylesheet" href="css/styles.css" />
-  <!-- Yours. Loads last so anything in it wins. See DESIGN.md. -->
   <link rel="stylesheet" href="css/custom.css" />
+  <link rel="stylesheet" href="css/identity.css" />
 </head>
 <body>
   <header class="app-bar">
     <div class="brand">
-      <span class="brand-mark" data-ico="books"></span>
+      <span class="brand-mark" data-ico="mark"></span>
       <span class="brand-name">Shelfie</span>
     </div>
     <button id="profile-chip" class="profile-chip" title="Switch profile">
@@ -103,7 +109,7 @@
     <div id="list-sentinel" aria-hidden="true"></div>
 
     <div id="empty-state" class="empty-state hidden">
-      <span class="empty-art" aria-hidden="true" data-ico="books"></span>
+      <span class="empty-art" aria-hidden="true" data-ico="mark"></span>
       <p id="empty-text">No books on this shelf yet.</p>
       <button id="empty-action" class="primary-btn"><span data-ico="plus"></span><span>Add your first book</span></button>
     </div>
