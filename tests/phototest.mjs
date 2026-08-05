@@ -269,16 +269,35 @@ const shelved = (page) =>
   if (await page.isVisible("#batch-modal")) {
     await page.click('[data-batch-shelf="completed"]');
     await page.waitForTimeout(800);
-    await page.reload();
-    await page.waitForTimeout(900);
+    await page.click('[data-close="add-modal"]');
+    await page.waitForTimeout(500);
     const books = await page.evaluate(() =>
       JSON.parse(localStorage.getItem("shelfie.library.v1") ?? "[]")
     );
     console.log("9. six books catalogued straight onto Finished");
-    console.log("   on Finished:", books.filter((b) => b.shelf === "completed").length,
-      "| all unrated:", books.every((b) => !b.ratings || !Object.keys(b.ratings).length));
+    console.log("   on Finished:", books.filter((b) => b.shelf === "completed").length, "of 6",
+      "| all unrated:", books.length > 0 && books.every((b) => !Object.keys(b.ratings ?? {}).length),
+      "| all flagged catalogued:", books.length > 0 && books.every((b) => b.catalogued === true));
     console.log("   rating nudge stays quiet:", !(await page.isVisible("#nudge-card")));
   }
+  await ctx.close();
+}
+
+// 10. …but the nudge must still work for a book you actually read. Seeded
+//     straight into storage, the way a book finished before this change
+//     looks, it has no `catalogued` flag and should still be asked about.
+{
+  const { ctx, page } = await open([{
+    id: "seed:1", title: "A Book You Actually Read", authors: ["Someone"],
+    shelf: "completed", owned: true, coverUrl: null, pageCount: 200,
+    addedAt: "2026-01-01T00:00:00Z",
+  }]);
+  await page.click('[data-close="add-modal"]');
+  await page.waitForTimeout(600);
+  const shown = await page.isVisible("#nudge-card");
+  console.log("10. an ordinary unrated finished book");
+  console.log("   nudge still asks:", shown,
+    shown ? JSON.stringify((await page.textContent(".nudge-q")).replace(/\s+/g, " ").trim()) : "");
   await ctx.close();
 }
 
