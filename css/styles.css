@@ -1226,29 +1226,52 @@ img.cover.missing { display: none; }
 /* The way into a book's actions is the fore-edge of the book itself — the
    stack of page ends you'd put a thumb on to open it. It belongs to the
    object instead of floating on top of the artwork, which is what the old
-   three-dot button did: a UI control parked on somebody's cover. */
-.page-edge {
+   three-dot button did: a UI control parked on somebody's cover.
+
+   Drawn at right:0 though, the edge was still *on* the cover — it just took
+   its 11px strip of artwork quietly. Pages go behind the boards: the stack
+   sits under the cover and only its fore-edge clears the right side, the way
+   a book turned a little towards you shows its page ends. So the stack is a
+   pseudo-element beneath the artwork and .page-edge is left as a bare hit
+   target over it — wide enough for a thumb, painting nothing. */
+.flip-front::before {
+  content: "";
   position: absolute;
-  top: 6%;
-  bottom: 6%;
-  right: 0;
-  width: 11px;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  border-radius: 0 6px 6px 0;
+  /* Shorter than the boards it's bound between, like a real text block. */
+  top: 3%;
+  bottom: 3%;
+  right: calc(var(--page-peek, 5px) * -1);
+  width: 15px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 0 4px 4px 0;
   background:
     repeating-linear-gradient(
       90deg,
       color-mix(in srgb, var(--page-edge-ink, #d9cdb4) 92%, #000) 0 1px,
       var(--page-edge-ink, #d9cdb4) 1px 2.5px
     );
-  box-shadow: inset 1px 0 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.22);
-  transition: width 0.16s ease, filter 0.16s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: right 0.16s ease, filter 0.16s ease;
 }
-.page-edge:hover { width: 14px; filter: brightness(1.06); }
-.page-edge:active { filter: brightness(0.94); }
-.grid-book:hover .page-edge { width: 13px; }
+/* The cover is what buries the rest of the stack, so it has to paint over it. */
+.flip-front .cover-wrap { z-index: 1; }
+.page-edge {
+  position: absolute;
+  top: 3%;
+  bottom: 3%;
+  right: calc(var(--page-peek, 5px) * -1);
+  width: 22px;
+  z-index: 2;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+/* Reaching for the edge eases more of the stack out from behind the cover. */
+.grid-book:hover .flip-front::before { --page-peek: 7px; }
+.flip-front:has(.page-edge:hover)::before { --page-peek: 9px; filter: brightness(1.06); }
+.flip-front:has(.page-edge:active)::before { filter: brightness(0.94); }
 /* The back is the checkout card out of the pocket inside a library book:
    card stock, a ruled head, and your own marks on it. The texture is a file
    you can replace — assets/textures/card-stock.svg. */
@@ -1460,7 +1483,7 @@ img.cover.missing { display: none; }
 .qa-facts:empty { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .flip-front, .flip-back { transition: none; }
+  .flip-front, .flip-back, .flip-front::before { transition: none; }
 }
 
 /* ============================================================
