@@ -9,12 +9,13 @@
 //   editionKey,      // Open Library edition key, e.g. "OL22856696M"
 //   workKey,         // Open Library work key, e.g. "/works/OL82563W"
 //   coverUrl,
-//   shelf: "owned" | "tbr" | "completed" | "wishlist",
+//   shelf: "owned" | "tbr" | "completed" | "wishlist",   // see below
+//   shelves: { profileName: { shelf, reading, finishedAt } },
 //   owned: true|false,        // tbr/completed books can also be owned copies
 //   medium: "print" | "ebook" | "audio",  // missing = print (pre-feature)
 //   content: "kids"|"teen"|"mature"|"explicit" | null,  // audience tag (opt-in UI)
 //   spice: 1-5 | null,        // spice scale (opt-in UI)
-//   profile: name | null,     // whose list entry this is (null = shared)
+//   profile: name | null,     // whose COPY this is (null = the household's)
 //   ratings: { profileName: 1-5 },
 //   reviews: { profileName: { text, updatedAt } },
 //   rating: 1-5 | null,       // legacy pre-profile rating
@@ -22,9 +23,78 @@
 //   addedAt: ISO string
 // }
 
+// ---------- one book, two people, two answers ----------
+//
+// Owning a book is a fact about the household: there is one copy on one
+// physical shelf, and `owned`/`profile` describe it. Wanting to read one is a
+// fact about a person, and two people in a shared library can hold different
+// ones about the same book at the same time — she's finished it, he hasn't
+// started. A single `shelf` field can only remember one of those, so putting
+// a book on your To Read used to take it off hers.
+//
+// So the three personal shelves live per-person in `shelves`, keyed by profile
+// name, exactly as `ratings` and `reviews` already were. `shelf` stays as the
+// household's answer (and as what every pre-existing record has): it is the
+// fallback for anyone without their own entry, which is what keeps a library
+// written before this change looking untouched. A book unassigned to anybody
+// reads as everyone's, matching how the old member filter treated it.
+
 import * as sync from "./sync.js";
 
 const STORAGE_KEY = "shelfie.library.v1";
+
+export const PERSONAL_SHELVES = ["tbr", "completed", "wishlist"];
+
+// Which shelf `who` has this book on — their own answer if they've given one,
+// otherwise the record's original single shelf.
+export function shelfFor(book, who) {
+  const mine = who && book?.shelves?.[who];
+  if (mine) return mine.shelf ?? null;
+  if (!PERSONAL_SHELVES.includes(book?.shelf)) return null;
+  // Legacy record: it belongs to whoever it was assigned to, or to everyone
+  // when it was never assigned.
+  return !book.profile || book.profile === who ? book.shelf : null;
+}
+
+export function readingFor(book, who) {
+  const mine = who && book?.shelves?.[who];
+  if (mine) return mine.reading === true;
+  return book?.reading === true && (!book.profile || book.profile === who);
+}
+
+export function finishedAtFor(book, who) {
+  const mine = who && book?.shelves?.[who];
+  if (mine) return mine.finishedAt ?? null;
+  return book?.finishedAt ?? null;
+}
+
+// Everyone who has an opinion about this book — used to decide whether a
+// household still wants it at all.
+export function peopleOn(book) {
+  return Object.keys(book?.shelves ?? {});
+}
+
+// Put a book on one person's shelf without touching anybody else's. Owned is
+// deliberately not routed through here: it's the household's fact, so it stays
+// on the record itself.
+export function setShelfFor(id, who, patch) {
+  const books = load();
+  const i = books.findIndex((b) => b.id === id);
+  if (i < 0) return;
+  const b = books[i];
+  const shelves = { ...(b.shelves ?? {}) };
+  // First time this person touches a legacy record, seed their entry from the
+  // household answer so a move doesn't silently clear the rest of their state.
+  const base = shelves[who] ?? {
+    shelf: shelfFor(b, who),
+    reading: readingFor(b, who),
+    finishedAt: finishedAtFor(b, who),
+  };
+  shelves[who] = { ...base, ...patch };
+  books[i] = { ...b, shelves };
+  save(books);
+  sync.upsertRemote(books[i]);
+}
 
 // ---------- shape guarantees ----------
 //
@@ -90,6 +160,7 @@ function looksClean(b) {
     typeof b.title === "string" &&
     Array.isArray(b.authors) &&
     SHELVES.includes(b.shelf) &&
+    (b.shelves == null || typeof b.shelves === "object") &&
     (b.pageCount == null || typeof b.pageCount === "number") &&
     (b.series == null || typeof b.series === "object")
   );
@@ -118,9 +189,31 @@ function normalize(book, i) {
     series: seriesOf(book.series),
     ratings: ratingMap(book.ratings),
     reviews: reviewMap(book.reviews),
+    shelves: shelfMap(book.shelves),
     rating: clamp(book.rating, 1, 5),
     profile: str(book.profile),
   };
+}
+
+// Per-person shelf entries, from a phone that may be running an older build or
+// a hand-edited import. An entry naming a shelf nobody has is dropped rather
+// than defaulted: guessing "owned" here would put someone else's book on the
+// household shelf behind their back.
+function shelfMap(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out = {};
+  for (const [who, entry] of Object.entries(v)) {
+    if (!who || !entry || typeof entry !== "object") continue;
+    // A null shelf is meaningful and must survive: it says "I have explicitly
+    // taken this off my shelves", which is different from "I never said". Drop
+    // the entry instead and the record's original shelf would come back.
+    out[who] = {
+      shelf: oneOf(entry.shelf, PERSONAL_SHELVES),
+      reading: entry.reading === true,
+      finishedAt: str(entry.finishedAt) || null,
+    };
+  }
+  return out;
 }
 
 function repair(list) {
@@ -162,8 +255,21 @@ export function getAllBooks() {
   return load();
 }
 
-export function getBooksOnShelf(shelf) {
-  return load().filter((b) => b.shelf === shelf);
+// A personal shelf is read through one person's eyes; `who` of null means
+// "anybody's", which is what the Everyone filter wants.
+export function getBooksOnShelf(shelf, who) {
+  if (!PERSONAL_SHELVES.includes(shelf)) return load().filter((b) => b.shelf === shelf);
+  if (who) return load().filter((b) => shelfFor(b, who) === shelf);
+  // Everyone's. Ask on behalf of each person with an entry — and of whoever
+  // the record was assigned to, who may have no entry at all: her answer is
+  // still the original single shelf, and she'd vanish from "Everyone" if only
+  // the explicit entries counted.
+  return load().filter((b) => {
+    if (shelfFor(b, null) === shelf) return true;
+    const people = new Set(peopleOn(b));
+    if (b.profile) people.add(b.profile);
+    return [...people].some((p) => shelfFor(b, p) === shelf);
+  });
 }
 
 export function getBook(id) {
