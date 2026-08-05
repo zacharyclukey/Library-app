@@ -717,6 +717,50 @@ function updateBulkBar() {
   $("#bulk-bar").querySelectorAll("[data-bulk-move]").forEach((btn) => {
     btn.disabled = n === 0;
   });
+
+  // Whose books these are. Rebuilt each time because the roster comes from the
+  // shared library and can change while you're standing here; hidden entirely
+  // when there's nobody to hand a book to.
+  const people = libraryPeople();
+  const assign = $("#bulk-assign");
+  assign.classList.toggle("hidden", people.length < 2);
+  if (people.length >= 2) {
+    assign.innerHTML =
+      `<span class="bulk-assign-label">Belongs to</span>` +
+      people
+        .map((p) => `<button class="shelf-pick" data-bulk-assign="${esc(p)}">${esc(p)}</button>`)
+        .join("") +
+      `<button class="shelf-pick" data-bulk-assign="">Shared</button>`;
+    assign.querySelectorAll("[data-bulk-assign]").forEach((btn) => {
+      btn.disabled = n === 0;
+      btn.addEventListener("click", () => bulkAssign(btn.dataset.bulkAssign));
+    });
+  }
+}
+
+// Hand the selection to somebody — or back to the shared pile. One Undo
+// covers the batch, same as a bulk move.
+function bulkAssign(who) {
+  const books = [...selectedIds].map((id) => db.getBook(id)).filter(Boolean);
+  if (!books.length) return;
+  const before = JSON.parse(JSON.stringify(books));
+  books.forEach((b) => db.updateBook(b.id, { profile: who || null }));
+  const n = books.length;
+  setSelectMode(false);
+  navigator.vibrate?.(15);
+  toast(
+    who
+      ? `${n} book${n === 1 ? "" : "s"} now ${esc(who)}'s`
+      : `${n} book${n === 1 ? "" : "s"} back to shared`,
+    {
+      actionLabel: "Undo",
+      onAction: () => {
+        before.forEach((b) => db.replaceBook(b));
+        renderShelf();
+        toast(`Put ${n} book${n === 1 ? "" : "s"} back`);
+      },
+    }
+  );
 }
 
 // Moves the selection, with one Undo covering the whole batch.
@@ -1331,9 +1375,12 @@ function updateProfileChip() {
 $("#profile-banner").addEventListener("click", () => showScreen("profile"));
 $("#shelf-hero").addEventListener("click", () => showScreen("stats"));
 
-// Names this phone could plausibly belong to: profiles already on books,
-// plus the names of everyone in the shared library.
-function suggestedProfiles() {
+// Everyone this library knows about: names already on books, plus every
+// member of the shared library. Used both for "who is holding this phone"
+// and for "whose book is this" — a member who has added nothing yet still
+// has to be assignable, or the only way to give them a book is to wait for
+// them to buy one.
+function libraryPeople() {
   const names = new Set(allProfiles());
   syncMembers.forEach((mem) => {
     if (mem.name && mem.name !== "Someone") names.add(mem.name);
@@ -1346,17 +1393,54 @@ $("#profile-chip").addEventListener("click", () => showScreen("profile"));
 function renderProfileScreen() {
   const el = $("#profile-content");
   const me = currentProfile();
-  const profiles = suggestedProfiles();
-  el.innerHTML = `
+  const people = libraryPeople();
+  // Signed in, your name is yours: it comes from the account, not from which
+  // phone you picked it up on. Becoming one of the other people in the library
+  // was never a thing anyone wanted to do — it was the only way to hand them a
+  // book, and "Belongs to" does that directly. So the roster below is a roster,
+  // not a set of costumes.
+  const signedIn = !!sync.accountHint();
+  const others = people.filter((p) => p !== me);
+
+  el.innerHTML = signedIn
+    ? `
+    <p>Profiles keep each person's <strong>To Read, Completed and Wishlist</strong>
+    separate, while the <strong>Owned</strong> shelf stays shared.</p>
+    <div class="settings-section">
+      <span class="filter-label">You</span>
+      <div class="profile-list" style="margin-top:0.4rem">
+        <span class="filter-chip big active">${icon("user")} ${esc(me ?? "Not set")}</span>
+      </div>
+      <form id="new-profile-form" class="inline-form" style="margin-top:0.7rem">
+        <input type="text" id="new-profile-input" maxlength="30" autocomplete="off"
+               placeholder="${me ? "Change your name" : "Add a name (e.g. Zach)"}" />
+        <button type="submit" class="primary-btn">${me ? "Rename" : "Create"}</button>
+      </form>
+      <p class="muted" style="font-size:0.78rem;margin-top:0.5rem">
+        This name follows your account, so it's the same on every device you
+        sign in on.</p>
+    </div>
+    ${others.length ? `
+    <div class="settings-section">
+      <span class="filter-label">Others in this library</span>
+      <div class="profile-list" style="margin-top:0.4rem">
+        ${others.map((p) => `<span class="filter-chip big">${icon("user")} ${esc(p)}</span>`).join("")}
+      </div>
+      <p class="muted" style="font-size:0.78rem;margin-top:0.5rem">
+        Their shelves are theirs — you can't sign in as them. To put a book on
+        someone's shelf, open it and set <strong>Belongs to</strong>, or select
+        several books and use the bar at the bottom.</p>
+    </div>` : ""}`
+    : `
     <p>Profiles keep each person's <strong>To Read, Completed and Wishlist</strong>
     separate, while the <strong>Owned</strong> shelf stays shared. Pick who's using
     this phone:</p>
-    ${profiles.length && !me
+    ${people.length && !me
       ? `<p class="muted" style="font-size:0.8rem;margin-top:-0.3rem">Tap your name
          if it's here — these come from your shared library and shelves.</p>`
       : ""}
     <div class="profile-list">
-      ${profiles
+      ${people
         .map(
           (p) => `<button class="filter-chip big ${p === me ? "active" : ""}"
                           data-pick-profile="${esc(p)}">${icon("user")} ${esc(p)}</button>`
@@ -1366,9 +1450,11 @@ function renderProfileScreen() {
     <form id="new-profile-form" class="inline-form" style="margin-top:0.7rem">
       <input type="text" id="new-profile-input" placeholder="Add a name (e.g. Zach)"
              autocomplete="off" maxlength="30" />
-      <button type="submit" class="primary-btn">${profiles.length ? "Add" : "Create"}</button>
+      <button type="submit" class="primary-btn">${people.length ? "Add" : "Create"}</button>
     </form>
     <p class="muted" style="font-size:0.78rem">Each phone remembers its own profile.
+    ${sync.isConfigured() ? `Sign in under <strong>Settings → Account</strong> and it
+    follows you instead.` : ""}
     Books added before profiles existed are shared — open one and use
     “Belongs to” to assign it.</p>`;
 
@@ -2050,15 +2136,21 @@ async function openDetail(id) {
         ${mediumChips}${ownedToggle}${readingToggle}
       </div>`;
     })()}
-    ${allProfiles().length ? `
+    ${(() => {
+      // Everyone in the library, not just everyone who already owns something:
+      // handing a new member their first book is exactly when you need this,
+      // and it was the one case the old list couldn't do.
+      const people = libraryPeople();
+      return people.length ? `
     <div class="assign-row">
       <span class="rate-label">Belongs to:</span>
-      ${allProfiles()
+      ${people
         .map((p) => `<button class="filter-chip ${b.profile === p ? "active" : ""}"
                        data-assign="${esc(p)}">${esc(p)}</button>`)
         .join("")}
       <button class="filter-chip ${!b.profile ? "active" : ""}" data-assign="">Shared</button>
-    </div>` : ""}
+    </div>` : "";
+    })()}
     ${trackContent() ? `
     <div class="assign-row">
       <span class="rate-label">Content:</span>
