@@ -450,7 +450,7 @@ function undoable(message, book, apply) {
 // sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
 // stay as modals — they're short task flows on top of whatever you're doing.
 
-const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends"];
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends", "appearance"];
 const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
 let currentScreen = "shelves";
 
@@ -467,7 +467,7 @@ function showScreen(name, { push = true } = {}) {
   );
 
   // Sub-screens keep their parent's nav item lit.
-  if (["profile", "sync", "friends"].includes(name)) $("#settings-btn").classList.add("active");
+  if (["profile", "sync", "friends", "appearance"].includes(name)) $("#settings-btn").classList.add("active");
   if (name === "stats") $("#nav-shelves").classList.add("active");
 
   if (name === "discover") renderDiscover();
@@ -477,6 +477,7 @@ function showScreen(name, { push = true } = {}) {
   else if (name === "sync") renderSyncScreen();
   else if (name === "stats") renderStatsScreen();
   else if (name === "friends") renderFriendsScreen();
+  else if (name === "appearance") renderAppearanceScreen();
 
   if (push && history.state?.screen !== name) {
     history.pushState({ screen: name }, "");
@@ -2909,17 +2910,21 @@ async function runExport(format) {
 
 $("#settings-btn").addEventListener("click", () => showScreen("settings"));
 
+// Settings is grouped the way a person thinks, not the order features
+// shipped: who you are, what you share, how books are tracked, how it looks,
+// and the data itself. Each group is small enough to scan; anything with real
+// depth (profiles, the shared library, appearance) is a row that opens its
+// own screen rather than a widget squatting on this one.
 function renderSettingsScreen() {
   const el = $("#settings-content");
   const me = currentProfile();
   const household = sync.isActive()
     ? sync.currentLibraryName() ?? sync.currentHousehold()
     : null;
-  const skin = themes.currentSkin();
-  const mode = themes.currentMode();
 
   el.innerHTML = `
     <div class="settings-section">
+      <span class="filter-label">You</span>
       <button class="settings-row" data-go="profile">
         <span class="row-main">
           <span class="row-icon">${icon("user")}</span>
@@ -2929,6 +2934,19 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
+      <button class="settings-row" data-go="stats">
+        <span class="row-main">
+          <span class="row-icon">${icon("books")}</span>
+          <span>Your reading
+            <span class="row-sub">Totals, this year, most-read authors and genres</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Sharing</span>
       <button class="settings-row" data-go="sync">
         <span class="row-main">
           <span class="row-icon">${icon("users")}</span>
@@ -2955,24 +2973,21 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
-      <button class="settings-row" data-go="stats">
+      <button class="settings-row" id="community-toggle" ${community.isAvailable() ? "" : "disabled"}>
         <span class="row-main">
-          <span class="row-icon">${icon("books")}</span>
-          <span>Your reading
-            <span class="row-sub">Totals, this year, most-read authors and genres</span>
+          <span class="row-icon">${icon("globe")}</span>
+          <span>Community sharing
+            <span class="row-sub">${community.isAvailable()
+              ? "Share your ratings, tags &amp; reviews (with your first name) to power everyone's recommendations"
+              : "Needs the shared-library Firebase setup first"}</span>
           </span>
         </span>
-        <span class="row-go">›</span>
+        <span class="row-go">${community.sharingEnabled() ? "On" : "Off"}</span>
       </button>
-      <button class="settings-row" data-go="import">
-        <span class="row-main">
-          <span class="row-icon">${icon("download")}</span>
-          <span>Restore from backup
-            <span class="row-sub">Load a Shelfie JSON export</span>
-          </span>
-        </span>
-        <span class="row-go">›</span>
-      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Your books</span>
       <button class="settings-row" id="medium-toggle">
         <span class="row-main">
           <span class="row-icon">${icon("headphones")}</span>
@@ -2991,16 +3006,33 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">${trackContent() ? "On" : "Off"}</span>
       </button>
-      <button class="settings-row" id="community-toggle" ${community.isAvailable() ? "" : "disabled"}>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Appearance</span>
+      <button class="settings-row" data-go="appearance">
         <span class="row-main">
-          <span class="row-icon">${icon("globe")}</span>
-          <span>Community sharing
-            <span class="row-sub">${community.isAvailable()
-              ? "Share your ratings, tags &amp; reviews (with your first name) to power everyone's recommendations"
-              : "Needs the shared-library Firebase setup first"}</span>
+          <span class="row-icon">${icon("palette")}</span>
+          <span>Aesthetic &amp; artwork
+            <span class="row-sub">${esc(themes.themeName())} · ${
+              esc(themes.MODES.find(([v]) => v === themes.currentMode())?.[1] ?? "Auto")
+            }</span>
           </span>
         </span>
-        <span class="row-go">${community.sharingEnabled() ? "On" : "Off"}</span>
+        <span class="row-go">›</span>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Data</span>
+      <button class="settings-row" data-go="import">
+        <span class="row-main">
+          <span class="row-icon">${icon("download")}</span>
+          <span>Restore from backup
+            <span class="row-sub">Load a Shelfie JSON export</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
       </button>
       <button class="settings-row" id="persist-toggle">
         <span class="row-main">
@@ -3013,45 +3045,7 @@ function renderSettingsScreen() {
       </button>
     </div>
 
-    <div class="settings-section">
-      <span class="filter-label">${icon("palette")} Aesthetic</span>
-      <div class="theme-grid">
-        ${themes.THEMES.map(
-          (t) => `
-          <button class="theme-card ${skin === t.id ? "active" : ""}" data-skin="${t.id}">
-            <span class="theme-swatch">
-              ${t.swatch.map((c) => `<i style="background:${esc(c)}"></i>`).join("")}
-            </span>
-            <span class="theme-name">${esc(t.name)}${skin === t.id ? " ✓" : ""}</span>
-            <span class="theme-blurb">${esc(t.blurb)}</span>
-          </button>`
-        ).join("")}
-      </div>
-
-      <span class="filter-label" style="display:block;margin-top:0.9rem">Brightness</span>
-      <div class="seg" style="margin-top:0.45rem">
-        ${themes.MODES.map(
-          ([v, label]) =>
-            `<button class="filter-chip ${mode === v ? "active" : ""}" data-mode="${v}">${label}</button>`
-        ).join("")}
-      </div>
-
-      <p class="settings-note">
-        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork goes
-        in <code>assets/</code>, and any icon can be replaced by dropping a file at
-        <code>assets/icons/&lt;name&gt;.svg</code>.
-        <button class="link-btn" id="refresh-assets">Check for new artwork</button>
-      </p>
-    </div>
-
     <span class="credit">Shelfie · book data from Open Library &amp; Google Books</span>`;
-
-  $("#refresh-assets").addEventListener("click", async () => {
-    const [found, icons] = await Promise.all([refreshCustomAssets(), refreshIconOverrides()]);
-    const n = Object.keys(found ?? {}).length + (icons?.length ?? 0);
-    renderSettingsScreen();
-    toast(n ? `Using ${n} file${n === 1 ? "" : "s"} from assets/` : "No artwork found in assets/");
-  });
 
   $("#community-toggle").addEventListener("click", () => {
     if (!community.isAvailable()) return;
@@ -3092,18 +3086,6 @@ function renderSettingsScreen() {
     renderSettingsScreen();
     renderShelf();
   });
-  el.querySelectorAll("[data-skin]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      themes.setSkin(btn.dataset.skin);
-      renderSettingsScreen();
-    })
-  );
-  el.querySelectorAll("[data-mode]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      themes.setMode(btn.dataset.mode);
-      renderSettingsScreen();
-    })
-  );
   el.querySelectorAll("[data-go]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const target = btn.dataset.go;
@@ -3111,7 +3093,69 @@ function renderSettingsScreen() {
       else if (target === "sync") showScreen("sync");
       else if (target === "stats") showScreen("stats");
       else if (target === "friends") showScreen("friends");
+      else if (target === "appearance") showScreen("appearance");
       else $("#import-input").click();
+    })
+  );
+}
+
+// Appearance: the aesthetic grid, brightness, and the artwork instructions.
+// Its own screen because the theme cards are the physically biggest thing in
+// settings, and because the design work ahead (spine palettes, textures)
+// belongs somewhere with room to grow.
+function renderAppearanceScreen() {
+  const el = $("#appearance-content");
+  const skin = themes.currentSkin();
+  const mode = themes.currentMode();
+
+  el.innerHTML = `
+    <div class="settings-section">
+      <span class="filter-label">Aesthetic</span>
+      <div class="theme-grid">
+        ${themes.THEMES.map(
+          (t) => `
+          <button class="theme-card ${skin === t.id ? "active" : ""}" data-skin="${t.id}">
+            <span class="theme-swatch">
+              ${t.swatch.map((c) => `<i style="background:${esc(c)}"></i>`).join("")}
+            </span>
+            <span class="theme-name">${esc(t.name)}${skin === t.id ? " ✓" : ""}</span>
+            <span class="theme-blurb">${esc(t.blurb)}</span>
+          </button>`
+        ).join("")}
+      </div>
+
+      <span class="filter-label" style="display:block;margin-top:0.9rem">Brightness</span>
+      <div class="seg" style="margin-top:0.45rem">
+        ${themes.MODES.map(
+          ([v, label]) =>
+            `<button class="filter-chip ${mode === v ? "active" : ""}" data-mode="${v}">${label}</button>`
+        ).join("")}
+      </div>
+
+      <p class="settings-note">
+        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork goes
+        in <code>assets/</code>, and any icon can be replaced by dropping a file at
+        <code>assets/icons/&lt;name&gt;.svg</code>.
+        <button class="link-btn" id="refresh-assets">Check for new artwork</button>
+      </p>
+    </div>`;
+
+  $("#refresh-assets").addEventListener("click", async () => {
+    const [found, icons] = await Promise.all([refreshCustomAssets(), refreshIconOverrides()]);
+    const n = Object.keys(found ?? {}).length + (icons?.length ?? 0);
+    renderAppearanceScreen();
+    toast(n ? `Using ${n} file${n === 1 ? "" : "s"} from assets/` : "No artwork found in assets/");
+  });
+  el.querySelectorAll("[data-skin]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      themes.setSkin(btn.dataset.skin);
+      renderAppearanceScreen();
+    })
+  );
+  el.querySelectorAll("[data-mode]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      themes.setMode(btn.dataset.mode);
+      renderAppearanceScreen();
     })
   );
 }
@@ -3563,6 +3607,68 @@ function wireRequestButtons(el) {
   );
 }
 
+// The account section on the active-sync screen. This is the LINK side of
+// the account story — it must only ever attach a credential to the existing
+// signed-in user, because this device owns a membership and possibly years
+// of ratings, all keyed to its current uid. (The sign-in side lives on the
+// join screen, where a device has nothing to lose.) See js/sync.js.
+function accountSectionHtml() {
+  if (!sync.accountAvailable()) return "";
+  const email = sync.accountEmail();
+  if (email) {
+    return `
+      <div class="settings-section">
+        <span class="filter-label">Your account</span>
+        <p class="muted" style="margin:0.4rem 0 0">${icon("check")} Signed in as
+        <strong>${esc(email)}</strong>. Your place in this library survives
+        reinstalls — on a new device or browser, sign in with this email, then
+        join with the library name and password, and you'll be let straight in.</p>
+      </div>`;
+  }
+  return `
+    <div class="settings-section">
+      <span class="filter-label">Protect your membership</span>
+      <p class="muted" style="margin:0.4rem 0 0.5rem">
+        Right now your place in this library lives only on this device — if the
+        app is ever deleted or the browser cleared, getting back in needs
+        another member's approval. Add an email and you can sign back in from
+        anywhere, no approval needed.</p>
+      <form id="link-account-form">
+        <div class="inline-form">
+          <input type="email" id="link-email" placeholder="Email" autocomplete="email" />
+        </div>
+        <div class="inline-form">
+          <input type="password" id="link-password" placeholder="Account password (6+ characters)"
+                 autocomplete="new-password" />
+        </div>
+        <div class="detail-actions" style="margin-top:0.35rem">
+          <button type="submit" class="primary-btn">Link account</button>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin:0.4rem 0 0">
+          This is a new password for signing in — not your library password, and
+          it doesn't need to match it.</p>
+      </form>
+    </div>`;
+}
+
+function wireAccountForm(el) {
+  const form = el.querySelector("#link-account-form");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const email = await sync.linkAccount(
+        $("#link-email").value, $("#link-password").value
+      );
+      toast(`Linked — you can now sign in as ${email} from any device.`);
+    } catch (err) {
+      toast(err.message, { ms: 8000 });
+      return;
+    }
+    renderSyncScreen();
+  });
+}
+
 function renderSyncActive(el) {
   const requestBlock = requestsHtml();
   const memberBlock = requestBlock + `
@@ -3572,7 +3678,7 @@ function renderSyncActive(el) {
       <p class="muted" style="font-size:0.75rem;margin:0.5rem 0 0">
         One entry per device — a phone and a tablet show separately. Names come
         from each device's profile.</p>
-    </div>`;
+    </div>` + accountSectionHtml();
 
   const leaveBlock = `
     ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
@@ -3642,6 +3748,7 @@ function renderSyncActive(el) {
 
   wireMemberButtons(el);
   wireRequestButtons(el);
+  wireAccountForm(el);
   $("#leave-btn").addEventListener("click", () => {
     if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
       sync.leave();
@@ -3654,6 +3761,16 @@ function renderSyncActive(el) {
 }
 
 function renderSyncJoin(el) {
+  // Load the SDK so the sign-in section can offer itself; re-render once it's
+  // there. Harmless when already loaded, a no-op when sync isn't configured.
+  if (!sync.accountAvailable()) {
+    sync.warmup().then(() => {
+      // Re-render to reveal the sign-in section — but never over someone's
+      // half-typed library name if the SDK took its time loading.
+      const untouched = !$("#library-name")?.value && !$("#library-password")?.value;
+      if (currentScreen === "sync" && !sync.currentHousehold() && untouched) renderSyncScreen();
+    }).catch(() => {});
+  }
   el.innerHTML = `
     <p>Name your library and protect it with a password. Whoever enters the
     <strong>same name and password</strong> lands in the same library — create
@@ -3675,6 +3792,29 @@ function renderSyncJoin(el) {
                 data-intent="create">Create new library</button>
       </div>
     </form>
+    ${sync.accountAvailable() ? `
+    <div class="settings-section" style="margin-top:0.9rem">
+      <span class="filter-label">Already a member?</span>
+      ${sync.accountEmail() ? `
+      <p class="muted" style="margin:0.4rem 0 0">${icon("check")} Signed in as
+      <strong>${esc(sync.accountEmail())}</strong> — join above with the library
+      name and password and you'll be let straight in.</p>` : `
+      <p class="muted" style="margin:0.4rem 0 0.5rem">
+        If you linked an account on your old device, sign in first — then join
+        above and you'll be recognised, with no approval needed.</p>
+      <form id="signin-form">
+        <div class="inline-form">
+          <input type="email" id="signin-email" placeholder="Email" autocomplete="email" />
+        </div>
+        <div class="inline-form">
+          <input type="password" id="signin-password" placeholder="Account password"
+                 autocomplete="current-password" />
+        </div>
+        <div class="detail-actions" style="margin-top:0.35rem">
+          <button type="submit" class="secondary-btn" style="margin-top:0">Sign in</button>
+        </div>
+      </form>`}
+    </div>` : ""}
     <p class="muted" style="font-size:0.78rem;margin-top:0.8rem">
       The password is only ever used on your phones to locate the library — it's
       never sent or stored online, so pick something you'll both remember.
@@ -3693,6 +3833,20 @@ function renderSyncJoin(el) {
   $("#library-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     await activateNamed($("#library-name").value, $("#library-password").value, intent === "create");
+  });
+
+  el.querySelector("#signin-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const email = await sync.signInAccount(
+        $("#signin-email").value, $("#signin-password").value
+      );
+      toast(`Signed in as ${email} — now join your library above.`);
+    } catch (err) {
+      toast(err.message, { ms: 8000 });
+      return;
+    }
+    renderSyncScreen();
   });
 
   $("#legacy-toggle").addEventListener("click", () =>
@@ -3726,7 +3880,7 @@ async function activateNamed(name, password, create) {
         ...syncOpts(),
       });
     } else {
-      await sync.requestJoin({
+      const res = await sync.requestJoin({
         name,
         password,
         localBooks: () => db.getAllBooks(),
@@ -3736,6 +3890,7 @@ async function activateNamed(name, password, create) {
         profileName: currentProfile(),
         onResolved: onJoinResolved,
       });
+      if (res?.recognised) toast("Welcome back — your account was recognised, no approval needed.");
     }
   } catch (err) {
     syncError = err.message;

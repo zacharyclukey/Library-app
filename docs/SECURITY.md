@@ -48,7 +48,11 @@ prevented at creation.
 
 - **Codes are bearer credentials.** Anyone holding your library password, or
   your friend code, is you as far as the system is concerned. There is no
-  second factor and no way to tell one holder from another.
+  second factor and no way to tell one holder from another. (The optional
+  email account in *Settings → Shared library* narrows one consequence of
+  this: a linked member who reinstalls signs back in and is recognised by
+  uid, instead of re-entering through the bearer-code door. The door itself
+  is unchanged for everyone else.)
 - **Household members are equal.** Anyone in a shared library can delete any
   book in it. Membership can be removed from the member list, but a device that
   still has the code can rejoin.
@@ -87,6 +91,13 @@ In order:
 1. **Real accounts.** Firebase Auth with Sign in with Apple / Google, replacing
    bearer codes. Rules scope to `request.auth.uid`. This touches `sync.js`,
    `community.js` and `social.js` — the seams are marked in comments.
+
+   *Partially done:* an optional Email/Password credential can now be linked
+   to the anonymous account (`sync.js`, "the account"), done the right way —
+   `linkWithCredential`, uid preserved — and `requestJoin` recognises a
+   returning uid as an existing member. What remains for a public release is
+   making accounts mandatory, adding OAuth providers, and scoping the rules
+   to uids instead of household knowledge.
 
    > **Link, don't replace.** Everyone already has an anonymous account, and
    > the rules tie every rating, review and friend profile to its uid. Adding

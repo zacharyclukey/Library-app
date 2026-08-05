@@ -126,6 +126,22 @@ by anyone who has shared a Wi-Fi password.
 and in [SECURITY.md](SECURITY.md), and it's the first thing a public release
 would have to replace.
 
+### An email can be linked, but never required
+
+*Settings → Shared library* offers to attach an email + password to the silent
+anonymous account. Linking preserves the uid (`linkWithCredential`, per the
+trap documented in SECURITY.md), and a device that signs in with that email is
+recognised by `requestJoin` as an existing member — no approval tap.
+
+*Why:* deleting a home-screen app on iOS deletes its storage container, uid
+and all. Before this, the only path back into a shared library was approval by
+another member — and the device most likely to approve you is the one you just
+wiped. An account turns "reinstall" from a lockout risk into a sign-in.
+
+*Why not further:* it's deliberately not a login wall. No account, no change;
+the code model stays. The account exists to make identity durable, not to
+gate anything.
+
 ### Anonymous auth, added later
 
 Firebase anonymous sign-in happens silently, purely so the security rules can

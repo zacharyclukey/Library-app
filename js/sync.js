@@ -76,9 +76,109 @@ export function deviceId() {
 // this app writes carries it, so the security rules can tell "the person who
 // wrote this" from "anyone else on the internet" — see SETUP-SYNC.md.
 let authUid = null;
+let authApi = null; // { mod, auth } once firebase-auth has loaded
 
 export function uid() {
   return authUid;
+}
+
+// ---------- the account (optional, and additive) ----------
+//
+// Everything above works with no account at all: the anonymous uid is the
+// identity, and it lives in this browser's storage. The trap is that "this
+// browser's storage" is fragile — on a phone, deleting the home-screen app
+// deletes the whole container, uid included, and with it this device's
+// membership and the ownership of everything it ever wrote.
+//
+// Linking an email + password to the anonymous account fixes exactly that,
+// and nothing else. linkWithCredential attaches the credential to the
+// EXISTING user, so the uid — the thing every rule and every document keys
+// on — does not change. A fresh install then signs in with the email and
+// gets the SAME uid back, and requestJoin below recognises it as an
+// already-approved member and lets it straight in, no approval tap needed.
+//
+// The one wrong way to do this is signInWithEmailAndPassword on a device
+// that already owns data: that REPLACES the anonymous user with a different
+// uid and silently orphans everything the old one wrote. So: LINK on the
+// device that has your library; SIGN IN on the device that has nothing.
+// The UI enforces this by only offering each form in the right place.
+
+// Turn Firebase's error codes into sentences a person can act on.
+function friendlyAuthError(err) {
+  const code = err?.code ?? "";
+  const msg =
+    {
+      "auth/operation-not-allowed":
+        "Email sign-in isn't switched on in your Firebase project yet — enable the Email/Password provider (SETUP-SYNC.md, step 2c).",
+      "auth/invalid-email": "That doesn't look like an email address.",
+      "auth/weak-password": "The account password needs at least 6 characters.",
+      "auth/email-already-in-use":
+        "That email is already linked to a sign-in. If it's yours, use Sign in on the NEW device — linking here would create a second identity.",
+      "auth/credential-already-in-use":
+        "That email is already linked to a sign-in. If it's yours, use Sign in on the NEW device — linking here would create a second identity.",
+      "auth/user-not-found": "No sign-in matches that email and password.",
+      "auth/wrong-password": "No sign-in matches that email and password.",
+      "auth/invalid-credential": "No sign-in matches that email and password.",
+      "auth/network-request-failed": "Couldn't reach the sign-in service — check your connection.",
+    }[code] ?? (err?.message || "Sign-in failed.");
+  const out = new Error(msg);
+  out.code = code;
+  return out;
+}
+
+export function accountAvailable() {
+  return !!authApi;
+}
+
+// The SDK loads lazily, so on a fresh device nothing has loaded it by the
+// time the join screen renders — and the sign-in form would never appear.
+// The screen calls this to load it, then re-renders. A no-op when already
+// loaded or when no Firebase config exists.
+export async function warmup() {
+  if (!firebaseConfig || fsdb) return;
+  await ensureFirebase();
+}
+
+// The linked email, or null while the account is still anonymous-only.
+export function accountEmail() {
+  return authApi?.auth?.currentUser?.email ?? null;
+}
+
+// On the device that already has the library: attach an email + password to
+// the existing anonymous user. The uid is unchanged, which is the point.
+export async function linkAccount(email, password) {
+  await ensureFirebase();
+  if (!authApi?.auth?.currentUser) {
+    throw new Error("Sign-in isn't available right now — check your connection and try again.");
+  }
+  try {
+    const cred = authApi.mod.EmailAuthProvider.credential(email.trim(), password);
+    await authApi.mod.linkWithCredential(authApi.auth.currentUser, cred);
+  } catch (err) {
+    throw friendlyAuthError(err);
+  }
+  authUid = authApi.auth.currentUser.uid;
+  return accountEmail();
+}
+
+// On a fresh device with nothing on it: become the linked account. This
+// replaces the fresh anonymous user, which is safe precisely because the
+// device is fresh — it owns nothing yet for a uid change to orphan.
+export async function signInAccount(email, password) {
+  await ensureFirebase();
+  if (!authApi) {
+    throw new Error("Sign-in isn't available right now — check your connection and try again.");
+  }
+  let user;
+  try {
+    ({ user } = await authApi.mod.signInWithEmailAndPassword(
+      authApi.auth, email.trim(), password
+    ));
+  } catch (err) {
+    throw friendlyAuthError(err);
+  }
+  authUid = user?.uid ?? null;
+  return accountEmail();
 }
 
 async function ensureFirebase() {
@@ -101,15 +201,12 @@ async function ensureFirebase() {
     // work exactly as it did before this existed. Writes will then be refused
     // by the rules and the sync screen says so, which is a far better failure
     // than the whole feature going dark.
-    // If real sign-in is ever added here, it must LINK to this anonymous
-    // account (linkWithCredential) rather than replacing it. Every community
-    // and social document is owned by this uid, and a fresh uid would make a
-    // person's own history unwritable. See docs/SECURITY.md.
     try {
       const authMod = await import(`${SDK}/firebase-auth.js`);
       const auth = authMod.getAuth(app);
       const cred = auth.currentUser ?? (await authMod.signInAnonymously(auth)).user;
       authUid = cred?.uid ?? null;
+      authApi = { mod: authMod, auth };
     } catch (err) {
       console.warn("anonymous sign-in unavailable:", err?.message ?? err);
     }
@@ -228,6 +325,11 @@ export async function announceMember(profileName, joinedAt) {
       name: (profileName ?? "").trim() || "Someone",
       joinedAt: joinedAt ?? now,
       lastSeen: now,
+      // The signed-in identity behind this device, so a reinstall that signs
+      // back in can be recognised as an existing member (see requestJoin).
+      // Spread-guarded: merge:true means writing uid:null here would erase a
+      // good stamp on a launch where anonymous sign-in happened to fail.
+      ...(authUid ? { uid: authUid } : {}),
     },
     { merge: true }
   );
@@ -278,11 +380,20 @@ export async function requestJoin(opts) {
   const libName = meta.data().name ?? displayName;
 
   const snap = await m.getDocs(m.collection(fsdb, "households", libId, "books"));
-  const hasMembers = snap.docs.some((d) => d.id.startsWith(MEMBER_PREFIX));
-  if (!hasMembers) {
+  const memberDocs = snap.docs.filter((d) => d.id.startsWith(MEMBER_PREFIX));
+
+  // A returning member doesn't knock — they have a key. If this signed-in
+  // uid is already stamped on a member entry, this is the same person on a
+  // fresh install (or in Safari instead of the installed app), and making
+  // them wait for someone to tap Approve would lock out anyone whose
+  // approver was the very device they just wiped.
+  const recognised =
+    authUid && memberDocs.some((d) => d.data().uid === authUid);
+
+  if (recognised || memberDocs.length === 0) {
     await finalizeJoin(libId, libName, opts);
     opts.onResolved?.(true, libName);
-    return { pending: false, libName };
+    return { pending: false, libName, recognised: !!recognised };
   }
 
   await m.setDoc(bookDoc(libId, JOIN_PREFIX + deviceId()), {
