@@ -134,8 +134,10 @@ function recentActivity(profileName, limit = 25) {
     .map((b) => {
       const rating = b.ratings?.[profileName] ?? null;
       const review = b.reviews?.[profileName]?.text ?? null;
-      const at = b.reviews?.[profileName]?.updatedAt ?? b.finishedAt ?? null;
-      if (!at || (b.shelf !== "completed" && !rating && !review)) return null;
+      const at = b.reviews?.[profileName]?.updatedAt ?? db.finishedAtFor(b, profileName) ?? null;
+      // Finished is per-person now: publish what *this* profile finished,
+      // not whatever the record's original single shelf happened to say.
+      if (!at || (db.shelfFor(b, profileName) !== "completed" && !rating && !review)) return null;
       return {
         key: bookKey(b),
         title: b.title ?? null,

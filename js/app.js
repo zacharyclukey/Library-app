@@ -219,8 +219,8 @@ function renderNudge() {
   const el = $("#nudge-card");
   const snoozedUntil = Number(localStorage.getItem(NUDGE_SNOOZE_KEY) ?? 0);
   const candidates = db
-    .getBooksOnShelf("completed")
-    .filter((b) => !myRating(b) && (!b.profile || b.profile === currentProfile()));
+    .getBooksOnShelf("completed", currentProfile())
+    .filter((b) => !myRating(b));
 
   if (Date.now() < snoozedUntil || !candidates.length || !currentProfile()) {
     el.classList.add("hidden");
@@ -271,7 +271,7 @@ function renderNudge() {
 // cataloguing, not this year's reading, and shouldn't inflate the number.
 // Nothing extra to tick: the two paths that count are ones you'd take anyway.
 function countsAsReadHere(book) {
-  return book.shelf === "tbr" || book.reading === true;
+  return myShelf(book) === "tbr" || iAmReading(book);
 }
 
 // Only written when true, so a later move can never clear it.
@@ -279,6 +279,35 @@ function readHerePatch(book, toShelf) {
   return toShelf === "completed" && (book.readHere || countsAsReadHere(book))
     ? { readHere: true }
     : {};
+}
+
+// The one place a book changes shelves, so the personal/household split is
+// decided once. Owning is the household's business and goes on the record;
+// To Read, Finished and Wishlist are yours and go under your name, leaving
+// everyone else's answer about the same book exactly where it was.
+//
+// Note what a personal move deliberately does NOT do: touch `owned`. Sending
+// a book to your Wishlist used to mark the copy unowned, which in a shared
+// library would quietly take away the copy your partner is holding.
+function moveToShelf(b, to, who = currentProfile()) {
+  if (to === "owned") {
+    db.updateBook(b.id, { owned: true, ...readHerePatch(b, to) });
+    // It's on the household shelf now, so it comes off the mover's own pile —
+    // an explicit "none" rather than a deletion, or the record's original
+    // shelf would drift back in underneath them.
+    db.setShelfFor(b.id, who, { shelf: null, reading: false });
+    return;
+  }
+  const finishing = to === "completed";
+  db.setShelfFor(b.id, who, {
+    shelf: to,
+    reading: finishing ? false : db.readingFor(b, who),
+    finishedAt: finishing
+      ? db.finishedAtFor(b, who) ?? new Date().toISOString()
+      : db.finishedAtFor(b, who),
+  });
+  const here = readHerePatch(b, to);
+  if (here.readHere) db.updateBook(b.id, here);
 }
 
 function renderStatsScreen() {
@@ -289,10 +318,10 @@ function renderStatsScreen() {
     return;
   }
 
-  const finished = db.getBooksOnShelf("completed");
+  const finished = db.getBooksOnShelf("completed", currentProfile());
   const year = new Date().getFullYear();
   const finishedThisYear = finished.filter(
-    (b) => b.readHere && (b.finishedAt ?? "").startsWith(String(year))
+    (b) => b.readHere && (db.finishedAtFor(b, currentProfile()) ?? "").startsWith(String(year))
   );
   const pagesThisYear = finishedThisYear.reduce((n, b) => n + (Number(b.pageCount) || 0), 0);
   const rated = all.map((b) => myRating(b)).filter(Boolean);
@@ -309,7 +338,7 @@ function renderStatsScreen() {
   // Books finished per month this year, as a small bar row.
   const months = Array.from({ length: 12 }, () => 0);
   finishedThisYear.forEach((b) => {
-    const m = new Date(b.finishedAt).getMonth();
+    const m = new Date(db.finishedAtFor(b, currentProfile())).getMonth();
     if (!Number.isNaN(m)) months[m]++;
   });
   const peak = Math.max(...months, 1);
@@ -334,7 +363,7 @@ function renderStatsScreen() {
       ${stat(all.length, "books")}
       ${stat(finished.length, "finished")}
       ${stat(db.getOwnedBooks().length, "owned")}
-      ${stat(all.filter((b) => b.reading).length, "in progress")}
+      ${stat(all.filter(iAmReading).length, "in progress")}
     </div>
 
     <div class="d-section" style="margin-top:1rem">
@@ -538,22 +567,36 @@ function esc(s) {
 // The Owned shelf is "everything you own", so a book you own that also sits
 // on To Read / Finished / Wishlist appears here too — it's a property of the
 // book, not a mutually exclusive location.
-function booksForShelf(shelf) {
-  return shelf === "owned" ? db.getOwnedBooks() : db.getBooksOnShelf(shelf);
+// Owned is the household's shelf — one copy, everybody sees it. The other
+// three are read through somebody's eyes: `who` null means anybody's, which
+// is what the Everyone chip asks for.
+function booksForShelf(shelf, who) {
+  return shelf === "owned" ? db.getOwnedBooks() : db.getBooksOnShelf(shelf, who);
 }
 
-function renderShelf() {
-  let books = booksForShelf(currentShelf);
-  for (const shelf of SHELVES) {
-    $(`#count-${shelf}`).textContent = booksForShelf(shelf).length;
-  }
+// The shelf/reading/finished state for the person holding the phone.
+const myShelf = (b) => db.shelfFor(b, currentProfile());
+const iAmReading = (b) => db.readingFor(b, currentProfile());
+// What to *call* a book's shelf when there's one label's worth of room: your
+// own answer if you've given one, otherwise the household's Owned.
+const displayShelf = (b) => myShelf(b) ?? (b.owned || b.shelf === "owned" ? "owned" : b.shelf);
 
+function renderShelf() {
   const personal = PERSONAL_SHELVES.includes(currentShelf);
-  renderProfileFilter(personal);
-  if (personal && memberFilter !== "all") {
-    const target = memberFilter === "me" ? currentProfile() : memberFilter;
-    books = books.filter((b) => !b.profile || !target || b.profile === target);
+  // Who the shelf is being read as. "Everyone" is null — anyone's copy counts.
+  const target = !personal
+    ? null
+    : memberFilter === "all" ? null
+    : memberFilter === "me" ? currentProfile()
+    : memberFilter;
+
+  let books = booksForShelf(currentShelf, target);
+  // The tab counts always show your own shelves, whatever the filter is set
+  // to — they're how big *your* pile is, not how big the household's is.
+  for (const shelf of SHELVES) {
+    $(`#count-${shelf}`).textContent = booksForShelf(shelf, currentProfile()).length;
   }
+  renderProfileFilter(personal);
   const q = searchQuery.trim().toLowerCase();
   if (q) {
     books = books.filter((b) =>
@@ -564,9 +607,11 @@ function renderShelf() {
   const hadBeforeFilter = books.length;
   books = books.filter((b) => flt.matchesFilter(b, shelfFilter, { myRating: myRating(b) }));
   books = flt.sortBooks(books, shelfSort, { ratingOf: myRating });
-  // What you're reading right now belongs at the top of To Read.
+  // What you're reading right now belongs at the top of To Read — what *she's*
+  // reading doesn't, so this asks about the person the shelf is being read as.
   if (currentShelf === "tbr" && shelfSort === "added") {
-    books = [...books].sort((a, b) => (b.reading ? 1 : 0) - (a.reading ? 1 : 0));
+    const readingNow = (b) => db.readingFor(b, target ?? currentProfile());
+    books = [...books].sort((a, b) => (readingNow(b) ? 1 : 0) - (readingNow(a) ? 1 : 0));
   }
   updateFilterBadge();
 
@@ -606,8 +651,8 @@ function renderHero() {
   }
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const reading = all.filter((b) => b.reading).length;
-  const finished = db.getBooksOnShelf("completed").length;
+  const reading = all.filter(iAmReading).length;
+  const finished = db.getBooksOnShelf("completed", currentProfile()).length;
   const facts = [
     reading ? `${reading} in progress` : null,
     finished ? `${finished} finished` : null,
@@ -769,14 +814,7 @@ function bulkMove(to) {
   if (!books.length) return;
   const before = JSON.parse(JSON.stringify(books));
   for (const b of books) {
-    const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-    db.updateBook(b.id, {
-      shelf: to,
-      owned,
-      reading: to === "tbr" || to === "owned" ? b.reading ?? false : false,
-      finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
-      ...readHerePatch(b, to),
-    });
+    moveToShelf(b, to);
     seriesCache.delete(b.id);
   }
   social.publishSoon(currentProfile());
@@ -893,7 +931,7 @@ function missingInSeries(b) {
 // the Owned tab lists books that live on other shelves and "remove" could
 // otherwise read as "take it out of this one view".
 function confirmRemoval(b) {
-  const also = b.shelf !== "owned" && b.owned ? " It's on your Owned list too." : "";
+  const also = myShelf(b) && b.owned ? " It's on your Owned list too." : "";
   return confirm(
     `Remove “${b.title}” from your library?\n\n` +
       `This takes it off every shelf, along with your rating and review.${also}\n\n` +
@@ -981,13 +1019,13 @@ function gridCard(b, showNames) {
           </div>
           <div class="cc-side">
           <div class="qa-row">
-            ${b.shelf !== "tbr"
+            ${myShelf(b) !== "tbr"
               ? qaButton({ attr: 'data-qa-move="tbr"', label: "To read", glyph: "books" }) : ""}
-            ${b.shelf === "tbr" || b.shelf === "owned"
+            ${myShelf(b) === "tbr" || !myShelf(b)
               ? qaButton({ attr: "data-qa-reading", glyph: "bookmark",
-                           label: b.reading ? "Stop reading" : "Reading now", on: b.reading })
+                           label: iAmReading(b) ? "Stop reading" : "Reading now", on: iAmReading(b) })
               : ""}
-            ${b.shelf !== "completed"
+            ${myShelf(b) !== "completed"
               ? qaButton({ attr: 'data-qa-move="completed"', label: "Finished", glyph: "check" }) : ""}
           </div>
           <div class="qa-foot">
@@ -1004,14 +1042,14 @@ function gridCard(b, showNames) {
         <p class="grid-author">${esc((b.authors ?? []).join(", "))}</p>
       </div>
       <div class="grid-meta">
-        ${b.reading ? `<span class="mini-badge reading" title="Currently reading">${icon("bookOpen")}</span>` : ""}
+        ${iAmReading(b) ? `<span class="mini-badge reading" title="Currently reading">${icon("bookOpen")}</span>` : ""}
         ${rating ? `<span class="grid-rating">${starString(rating)}</span>` : ""}
         ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="mini-badge medium" title="${esc(MEDIA[b.medium])}">${icon(MEDIUM_ICON[b.medium])}</span>` : ""}
         ${trackContent() && b.spice ? `<span class="mini-badge spice" title="Spice ${b.spice} of 5">${icon("flame")}${b.spice}</span>` : ""}
         ${trackContent() && !b.spice && ["mature", "explicit"].includes(b.content) ? `<span class="mini-badge mature-tag">18+</span>` : ""}
         ${trackContent() && b.content === "kids" ? `<span class="mini-badge kids-tag">${icon("teddy")}</span>` : ""}
-        ${currentShelf === "owned" && b.shelf !== "owned"
-          ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[b.shelf])}">${SHELF_ICON[b.shelf]}</span>`
+        ${currentShelf === "owned" && myShelf(b)
+          ? `<span class="mini-badge shelf" title="Also on ${esc(SHELF_LABEL[myShelf(b)])}">${SHELF_ICON[myShelf(b)]}</span>`
           : ""}
         ${missing ? `<span class="mini-badge" title="${missing} more in this series">+${missing}</span>` : ""}
         ${showNames && b.profile ? `<span class="mini-badge who">${esc(b.profile[0])}</span>` : ""}
@@ -1043,9 +1081,9 @@ function listCard(b, showNames) {
         <p class="isbn">${b.isbn13 ? "ISBN " + esc(b.isbn13) : ""}</p>
         ${rating ? `<p class="card-rating" aria-label="Rated ${rating} of 5">${starString(rating)}</p>` : ""}
         <div class="badges">
-          ${b.reading ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
-          ${currentShelf === "owned" && b.shelf !== "owned"
-            ? `<span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>`
+          ${iAmReading(b) ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
+          ${currentShelf === "owned" && myShelf(b)
+            ? `<span class="badge shelf-badge">${SHELF_ICON[myShelf(b)]} ${esc(SHELF_LABEL[myShelf(b)])}</span>`
             : ""}
           ${trackMedium() && MEDIUM_ICON[b.medium] ? `<span class="badge medium-badge">${icon(MEDIUM_ICON[b.medium])} ${esc(MEDIA[b.medium])}${b.owned ? "" : " · not owned"}</span>` : ""}
           ${trackContent() && b.content ? `<span class="badge content-badge">${flt.CONTENT_LABEL[b.content] ?? esc(b.content)}</span>` : ""}
@@ -1560,7 +1598,7 @@ async function handleFoundIsbn(isbn) {
     // worth opening the sheet: scanning a book usually means you now have it
     // in hand, and "it's on your Wishlist" should be one tap from Owned.
     const already = findExisting(book);
-    if (already?.sameEdition && already.book.shelf === "owned") {
+    if (already?.sameEdition && already.book.owned) {
       // If that copy was added by title search it has no edition details;
       // the barcode in your hand is exactly what's missing, so fill them in.
       const vague = !already.book.isbn13;
@@ -1717,7 +1755,7 @@ function findExisting(book) {
 function dupeNote(book) {
   const hit = findExisting(book);
   if (!hit) return "";
-  const where = esc(SHELF_LABEL[hit.book.shelf] ?? "your library");
+  const where = esc(SHELF_LABEL[displayShelf(hit.book)] ?? "your library");
   if (hit.sameEdition) {
     return `<p class="dupe-note">You already have this on your ${where} shelf — picking a
       shelf updates it rather than adding a second one.</p>`;
@@ -1861,8 +1899,8 @@ bookList.addEventListener("click", (e) => {
     return;
   }
   if (e.target.closest("[data-qa-reading]")) {
-    undoable(b.reading ? "No longer reading" : "Started reading", b, () =>
-      db.updateBook(id, { reading: !b.reading })
+    undoable(iAmReading(b) ? "No longer reading" : "Started reading", b, () =>
+      db.setShelfFor(id, currentProfile(), { reading: !iAmReading(b) })
     );
     flippedIds.delete(id);
     renderShelf();
@@ -1880,14 +1918,7 @@ bookList.addEventListener("click", (e) => {
     if (Date.now() - armedAt < ARM_DELAY) return armQuickAction(move);
     disarmQuickAction();
     undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
-      const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-      db.updateBook(id, {
-        shelf: to,
-        owned,
-        reading: to === "completed" ? false : b.reading ?? false,
-        finishedAt: to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null,
-        ...readHerePatch(b, to),
-      });
+      moveToShelf(b, to);
       social.publishSoon(currentProfile());
     });
     flippedIds.delete(id);
@@ -2025,8 +2056,9 @@ const MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
 // you put it in your reading year. Two selects rather than a date input:
 // month is the right grain, and it behaves the same on every phone.
 function readMonthRow(book) {
-  if (book.shelf !== "completed") return "";
-  const when = book.readHere && book.finishedAt ? new Date(book.finishedAt) : null;
+  if (myShelf(book) !== "completed") return "";
+  const mine = db.finishedAtFor(book, currentProfile());
+  const when = book.readHere && mine ? new Date(mine) : null;
   const valid = when && !Number.isNaN(when.getTime());
   const thisYear = new Date().getFullYear();
   const years = Array.from({ length: 8 }, (_, i) => thisYear - i);
@@ -2088,7 +2120,7 @@ async function openDetail(id) {
     ["ISBN-13", b.isbn13],
     ["ISBN-10", b.isbn10],
     ["Open Library edition", b.editionKey],
-    ["Shelf", SHELF_LABEL[b.shelf] + (b.owned && b.shelf !== "owned" ? " (owned copy)" : "")],
+    ["Shelf", SHELF_LABEL[displayShelf(b)] + (b.owned && displayShelf(b) !== "owned" ? " (owned copy)" : "")],
   ].filter(([, v]) => v);
 
   const heroMeta = [
@@ -2105,8 +2137,8 @@ async function openDetail(id) {
         ${b.subtitle ? `<p class="subtitle">${esc(b.subtitle)}</p>` : ""}
         <p class="hero-meta">${heroMeta.map(esc).join("<br />")}</p>
         <div class="badges">
-          <span class="badge shelf-badge">${SHELF_ICON[b.shelf]} ${esc(SHELF_LABEL[b.shelf])}</span>
-          ${b.reading ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
+          <span class="badge shelf-badge">${SHELF_ICON[displayShelf(b)]} ${esc(SHELF_LABEL[displayShelf(b)])}</span>
+          ${iAmReading(b) ? `<span class="badge reading-badge">${icon("bookOpen")} Reading now</span>` : ""}
         </div>
       </div>
     </div>
@@ -2114,11 +2146,11 @@ async function openDetail(id) {
     ${(() => {
       // Ownership is always editable for To Read / Finished; the medium
       // chips appear only when copy-type tracking is enabled.
-      const readingToggle = b.shelf === "tbr" || b.shelf === "owned"
-        ? `<button class="filter-chip ${b.reading ? "active" : ""}" data-reading-toggle>
-             ${icon("bookOpen")} ${b.reading ? "Reading now" : "Start reading"}</button>`
+      const readingToggle = myShelf(b) === "tbr" || !myShelf(b)
+        ? `<button class="filter-chip ${iAmReading(b) ? "active" : ""}" data-reading-toggle>
+             ${icon("bookOpen")} ${iAmReading(b) ? "Reading now" : "Start reading"}</button>`
         : "";
-      const ownedToggle = b.shelf !== "owned" && b.shelf !== "wishlist"
+      const ownedToggle = myShelf(b) !== "wishlist"
         ? `<button class="filter-chip ${b.owned ? "active" : ""}" data-owned-toggle
              title="Untoggle for library loans, Kindle Unlimited, borrowed audiobooks">
              ${b.owned ? "✓ I own it" : "Not owned"}</button>`
@@ -2218,7 +2250,7 @@ async function openDetail(id) {
 
     <div class="detail-actions">
       ${SHELVES
-        .filter((s) => s !== b.shelf)
+        .filter((s) => s !== (s === "owned" ? (b.owned ? "owned" : null) : myShelf(b)))
         .map((s) => `<button class="secondary-btn" data-move="${s}">Move to ${SHELF_LABEL[s]}</button>`)
         .join("")}
       <button class="danger-btn" data-delete>Remove</button>
@@ -2236,14 +2268,7 @@ async function openDetail(id) {
   $("#detail-content").querySelectorAll("[data-move]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const to = btn.dataset.move;
-      // Moving off the wishlist to owned/tbr/completed means you got the book.
-      const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
-      // Finishing a book (or shelving it away) ends the current read.
-      const reading = to === "tbr" || to === "owned" ? b.reading ?? false : false;
-      const finishedAt = to === "completed" ? b.finishedAt ?? new Date().toISOString() : b.finishedAt ?? null;
-      undoable(`Moved to ${SHELF_LABEL[to]}`, b, () =>
-        db.updateBook(id, { shelf: to, owned, reading, finishedAt, ...readHerePatch(b, to) })
-      );
+      undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => moveToShelf(b, to));
       social.publishSoon(currentProfile());
       detailModal.close();
       renderShelf();
@@ -2288,8 +2313,10 @@ async function openDetail(id) {
       openDetail(id);
     })
   );
+  // Reading is a thing a person does, not a property of the copy: she can be
+  // halfway through the book he hasn't opened.
   $("#detail-content").querySelector("[data-reading-toggle]")?.addEventListener("click", () => {
-    db.updateBook(id, { reading: !b.reading });
+    db.setShelfFor(id, currentProfile(), { reading: !iAmReading(b) });
     renderShelf();
     openDetail(id);
   });
@@ -2579,7 +2606,7 @@ async function buildRecommendations(books, f) {
 
   const authorScore = {};
   for (const b of books) {
-    const engagement = (myRating(b) ?? 0) >= 4 ? 3 : b.shelf === "wishlist" ? 2 : 1;
+    const engagement = (myRating(b) ?? 0) >= 4 ? 3 : myShelf(b) === "wishlist" ? 2 : 1;
     const w = engagement * focusBoost(b);
     (b.authors ?? []).forEach((a) => (authorScore[a] = (authorScore[a] ?? 0) + w));
   }
