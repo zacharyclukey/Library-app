@@ -46,6 +46,7 @@ unless you pass `--network`. Everything else runs offline.
 | `seriestest.mjs` | Manual series tagging; spellings collapsing to one group |
 | `scandupe.mjs` | Scanning a book you already have, six ways |
 | `phototest.mjs` | Adding from a photo: six books in one shot, batch undo, soft focus, several photos at once |
+| `byhandtest.mjs` | ISBN check digits, and adding a book no catalogue has |
 | `readstats.mjs` | The reading-year rule |
 | `readmonth.mjs` | The "Read in" month override |
 | `bulkmove.mjs` | Selecting several books and moving them |

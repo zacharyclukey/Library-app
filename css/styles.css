@@ -1800,6 +1800,32 @@ body.selecting {
 
 .scan-status { min-height: 1.2em; font-size: 0.85rem; color: var(--ink-soft); margin: 0.7rem 0 0; }
 
+/* Folded away by default: it's the answer to a question most books never
+   raise, and it shouldn't compete with search for attention. */
+.by-hand { margin-top: 0.9rem; border-top: 1px solid var(--line); padding-top: 0.7rem; }
+.by-hand summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.by-hand > p { font-size: 0.78rem; line-height: 1.5; margin: 0.5rem 0 0.6rem; }
+.by-hand input {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+.by-hand input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.hand-row { display: flex; gap: 0.5rem; }
+.hand-row input { min-width: 0; }
+.by-hand button { width: 100%; justify-content: center; }
+
 .manual-entry { margin-top: 1.1rem; border-top: 1px solid var(--line); padding-top: 0.9rem; }
 .manual-entry h3 { margin: 0 0 0.6rem; font-family: var(--serif); font-size: 1rem; }
 .inline-form { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }

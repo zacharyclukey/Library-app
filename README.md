@@ -13,7 +13,9 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
     scans the whole picture rather than stopping at the first barcode it finds,
     and everything it found comes up as one list you tick through and send to a
     shelf in a single tap (undoable as one).
-  - Manual fallback: type an ISBN or search by title/author.
+  - Manual fallback: type an ISBN or search by title/author. A mistyped ISBN is
+    caught by its own check digit — you get "that isn't a valid ISBN" rather than
+    a puzzling "no book found" that reads as though the book doesn't exist.
 - **Edition-accurate records** — the scanned ISBN identifies the *specific version*
   you own: publisher, publish date, physical format (hardcover/paperback), page
   count, ISBN-10/13, Open Library edition key, and that edition's cover art.
@@ -104,8 +106,11 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   ✅ owned / ◻️ not owned.
 - **Say it yourself when the databases don't know** ✍️ — the free catalogues have
   thin data on indie and self-published books, and no amount of guessing fixes a
-  series nobody indexed. Every book's detail view has a **Set the series
-  yourself** field (with a picker of series already in your library, so the rest
+  series nobody indexed. When a scan or a search turns up nothing, **add it
+  yourself**: type the title (and author, year, pages if you like) and it goes on
+  the shelf like any other book, keeping the ISBN you scanned so the same barcode
+  finds *your* record later instead of making a second copy. Every book's detail
+  view also has a **Set the series yourself** field (with a picker of series already in your library, so the rest
   of the set is one tap each). What you set beats detection, never gets
   overwritten, syncs to the household, and groups the shelf straight away.
   "Not in a series" sticks too, instead of being re-guessed every launch.

@@ -270,6 +270,33 @@
         <button type="submit" class="primary-btn">Search</button>
       </form>
       <div id="search-results" class="search-results"></div>
+
+      <!-- The free catalogues are thin on indie and self-published books, and
+           until now a book they didn't know simply couldn't be recorded —
+           even with the barcode read and the book in your hand. -->
+      <details id="by-hand" class="by-hand">
+        <summary>Not in the catalogues? Add it yourself</summary>
+        <p class="muted">
+          Open Library and Google Books are patchy on indie and self-published
+          titles. Type what's on the cover and it goes on the shelf like any
+          other book.
+        </p>
+        <form id="by-hand-form">
+          <input type="text" id="hand-title" placeholder="Title" maxlength="300"
+                 autocomplete="off" required />
+          <input type="text" id="hand-author" placeholder="Author" maxlength="200"
+                 autocomplete="off" />
+          <div class="hand-row">
+            <input type="text" id="hand-year" placeholder="Year" maxlength="4"
+                   inputmode="numeric" autocomplete="off" />
+            <input type="text" id="hand-pages" placeholder="Pages" maxlength="5"
+                   inputmode="numeric" autocomplete="off" />
+            <input type="text" id="hand-isbn" placeholder="ISBN (optional)"
+                   inputmode="numeric" autocomplete="off" />
+          </div>
+          <button type="submit" class="primary-btn">Add this book</button>
+        </form>
+      </details>
     </div>
   </dialog>
 

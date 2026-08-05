@@ -14,7 +14,7 @@
 // no connection, which matters for a scanner you might be using in a room with
 // bad signal, and it costs nothing to run.
 
-import { readBarcodes, greyscaleFrom, sharpen } from "./ean13.js";
+import { readBarcodes, greyscaleFrom, sharpen, ean13Checksum } from "./ean13.js";
 
 const ISBN_FORMATS = ["ean_13", "ean_8", "upc_a"];
 
@@ -23,8 +23,22 @@ const ISBN_FORMATS = ["ean_13", "ean_8", "upc_a"];
 // in a couple of hundred pixels — throwing resolution away loses books.
 const MAX_WORKING_EDGE = 4000;
 
+// Shape *and* check digit. Our own reader already refuses anything whose
+// checksum doesn't add up, but the platform detector doesn't promise that —
+// and a barcode misread by one digit is a plausible-looking ISBN for a
+// completely different book, which is a worse outcome than reading nothing.
 function looksLikeIsbn(code) {
-  return /^97[89]\d{10}$/.test(code) || /^\d{9}[\dX]$/.test(code);
+  if (/^97[89]\d{10}$/.test(code)) {
+    const digits = [...code].map(Number);
+    return ean13Checksum(digits) === digits[12];
+  }
+  if (/^\d{9}[\dX]$/.test(code)) {
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += Number(code[i]) * (10 - i);
+    sum += code[9] === "X" ? 10 : Number(code[9]);
+    return sum % 11 === 0;
+  }
+  return false;
 }
 
 let nativeDetector; // undefined = untried, null = unavailable

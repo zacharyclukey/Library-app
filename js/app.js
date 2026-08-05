@@ -1680,10 +1680,69 @@ async function addFromPhotos(files) {
 }
 
 scanStatus.addEventListener("click", (e) => {
+  const hand = e.target.closest("[data-add-by-hand]");
+  if (hand) {
+    openByHand({ isbn: hand.dataset.addByHand, title: hand.dataset.handTitle });
+    return;
+  }
   const btn = e.target.closest("[data-open-existing]");
   if (!btn) return;
   addModal.close();
   openDetail(btn.dataset.openExisting);
+});
+
+// ---------- when the catalogues don't have it ----------
+
+const byHand = $("#by-hand");
+
+function openByHand({ isbn = "", title = "" } = {}) {
+  byHand.open = true;
+  if (isbn) $("#hand-isbn").value = isbn;
+  if (title) $("#hand-title").value = title;
+  byHand.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  $("#hand-title").focus();
+}
+
+$("#by-hand-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const title = $("#hand-title").value.trim();
+  if (!title) return;
+  const author = $("#hand-author").value.trim();
+  const isbn = api.normalizeIsbn($("#hand-isbn").value);
+  const year = $("#hand-year").value.replace(/\D/g, "").slice(0, 4);
+  const pages = Number($("#hand-pages").value.replace(/\D/g, "")) || null;
+
+  // Keyed by ISBN when there is one, so scanning this book later finds the
+  // record you typed rather than making a second one.
+  const id = isbn
+    ? "isbn:" + isbn
+    : "own:" + xport.hueOf(title + author).toString(36) + "-" + Date.now().toString(36);
+
+  const book = {
+    id,
+    title,
+    subtitle: null,
+    authors: author ? [author] : [],
+    isbn13: isbn?.length === 13 ? isbn : null,
+    isbn10: isbn?.length === 10 ? isbn : null,
+    workKey: null,
+    editionKey: null,
+    coverUrl: null,
+    publisher: null,
+    publishDate: year || null,
+    pageCount: pages,
+    format: null,
+    series: null,
+    language: null,
+    // Marks a record nobody else vouched for, so a later lookup can tell the
+    // difference between "the catalogue said so" and "you said so".
+    byHand: true,
+  };
+
+  e.target.reset();
+  byHand.open = false;
+  scanStatus.textContent = "";
+  queueBookForConfirm(book);
 });
 
 // Already own this exact copy? Then there's nothing to decide, which is what
@@ -1702,14 +1761,22 @@ function absorbIfOwned(book) {
     seriesCache.delete(already.book.id);
     renderShelf();
   }
-  return { id: already.book.id, title: book.title, vague };
+  // Say the title that's actually on the shelf. If you catalogued this one
+  // yourself the record keeps your wording, and quoting the catalogue's name
+  // back at you would look like it had been renamed behind your back.
+  return { id: already.book.id, title: vague ? book.title : already.book.title, vague };
 }
 
 async function handleFoundIsbn(isbn) {
   try {
     const book = await api.lookupByIsbn(isbn);
     if (!book) {
-      scanStatus.textContent = `No book found for ISBN ${isbn}. Try searching by title below.`;
+      // A dead end here used to be the end of it. You can be holding the book
+      // with its barcode already read and still have no way to record it.
+      scanStatus.innerHTML =
+        `No book found for ISBN ${esc(isbn)} — the free catalogues don't have every ` +
+        `book, especially indie and self-published ones. Search by title below, or ` +
+        `<button class="link-btn" data-add-by-hand="${esc(isbn)}">add it yourself</button>.`;
       return;
     }
     const had = absorbIfOwned(book);
@@ -1718,8 +1785,8 @@ async function handleFoundIsbn(isbn) {
       // fastest way to *find* it, so offer the way through.
       scanStatus.innerHTML = `${
         had.vague
-          ? `You already own “${esc(book.title)}” — filled in this edition's details.`
-          : `You already own “${esc(book.title)}” — it's on your Owned shelf.`
+          ? `You already own “${esc(had.title)}” — filled in this edition's details.`
+          : `You already own “${esc(had.title)}” — it's on your Owned shelf.`
       } <button class="link-btn" data-open-existing="${esc(had.id)}">Open it</button>`;
       navigator.vibrate?.(30);
       return;
@@ -1742,6 +1809,15 @@ $("#isbn-form").addEventListener("submit", async (e) => {
   const isbn = api.normalizeIsbn($("#isbn-input").value);
   if (!isbn) {
     scanStatus.textContent = "That doesn't look like a valid ISBN (need 10 or 13 digits).";
+    return;
+  }
+  // Catch the fumbled digit here. Left alone it becomes a lookup that comes
+  // back empty, and "no book found" reads as "this book doesn't exist"
+  // rather than "check what you typed".
+  if (!api.isbnChecksumOk(isbn)) {
+    scanStatus.textContent =
+      `${isbn} isn't a valid ISBN — its last digit is a checksum on the rest, and it ` +
+      `doesn't add up. Worth reading it off the book again.`;
     return;
   }
   scanStatus.textContent = `Looking up ISBN ${isbn}…`;
@@ -1776,9 +1852,14 @@ $("#title-form").addEventListener("submit", async (e) => {
     searchResults.innerHTML = "";
     return;
   }
-  scanStatus.textContent = results.length
-    ? `${results.length} match${results.length === 1 ? "" : "es"} — scroll for more.`
-    : "No matches found.";
+  if (results.length) {
+    scanStatus.textContent = `${results.length} match${results.length === 1 ? "" : "es"} — scroll for more.`;
+  } else {
+    scanStatus.innerHTML =
+      `No matches for “${esc(q)}”. The free catalogues miss plenty of indie and ` +
+      `self-published books — ` +
+      `<button class="link-btn" data-add-by-hand="" data-hand-title="${esc(q)}">add it yourself</button>.`;
+  }
   searchResults.innerHTML = results
     .map(
       (r, i) => `
