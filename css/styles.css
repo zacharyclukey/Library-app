@@ -1962,6 +1962,48 @@ body.selecting {
   letter-spacing: 0.02em;
   margin-top: 0.12rem;
 }
+/* ---------- several books from one photo ---------- */
+
+.batch-tools {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0.1rem 0 0.5rem;
+}
+/* Tall lists scroll inside the sheet so the shelf buttons stay put — with a
+   dozen books found, hunting for the buttons below the fold is no fun. */
+.batch-list {
+  max-height: min(46vh, 26rem);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+}
+.batch-row {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.batch-row:last-child { border-bottom: none; }
+.batch-row:hover { background: var(--card); }
+.batch-row input { flex: none; margin: 0; }
+.batch-row .cover-wrap { width: 38px; flex: none; }
+.batch-meta { min-width: 0; line-height: 1.3; }
+.batch-meta strong { font-size: 0.9rem; font-weight: 650; }
+.batch-meta small { color: var(--muted); font-size: 0.76rem; }
+.batch-meta em {
+  display: block;
+  font-size: 0.73rem;
+  color: var(--accent);
+  font-style: normal;
+  margin-top: 0.1rem;
+}
+/* An unticked book stays legible — it's a choice, not a disabled control. */
+.batch-row:has(input:not(:checked)) { opacity: 0.5; }
+
 .also-own {
   display: flex;
   gap: 0.5rem;

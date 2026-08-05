@@ -16,6 +16,7 @@ const bookList = $("#book-list");
 const emptyState = $("#empty-state");
 const addModal = $("#add-modal");
 const confirmModal = $("#confirm-modal");
+const batchModal = $("#batch-modal");
 const detailModal = $("#detail-modal");
 const scanStatus = $("#scan-status");
 const scannerArea = $("#scanner-area");
@@ -1564,23 +1565,119 @@ $("#stop-scan-btn").addEventListener("click", closeScanner);
 $("#method-photo").addEventListener("click", () => $("#photo-input").click());
 
 $("#photo-input").addEventListener("change", async (e) => {
-  const file = e.target.files?.[0];
+  const files = [...(e.target.files ?? [])];
   e.target.value = "";
-  if (!file) return;
-  scanStatus.textContent = "Reading barcodes from the photo…";
-  try {
-    const isbns = await scanImageFile(file);
-    if (isbns.length === 0) {
-      scanStatus.textContent =
-        "No barcode found in that photo. Get closer to the barcode (usually on the back cover), or enter the ISBN manually below.";
-      return;
-    }
-    scanStatus.textContent = `Found ${isbns.length} book${isbns.length > 1 ? "s" : ""} — looking them up…`;
-    for (const isbn of isbns) await handleFoundIsbn(isbn);
-  } catch (err) {
-    scanStatus.textContent = "Could not read that image: " + err.message;
-  }
+  if (files.length) await addFromPhotos(files);
 });
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// Look several ISBNs up at once. Sequential lookups made a photo of a pile
+// feel broken — eight books meant eight round trips one after another, with
+// the sheet flickering open and shut as each arrived. A few in flight at a
+// time is quick without leaning on Open Library.
+async function lookupAll(isbns, onProgress) {
+  const results = new Array(isbns.length);
+  let next = 0;
+  let done = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, isbns.length) }, async () => {
+      while (next < isbns.length) {
+        const i = next++;
+        try {
+          results[i] = { isbn: isbns[i], book: await api.lookupByIsbn(isbns[i]) };
+        } catch (err) {
+          results[i] = { isbn: isbns[i], error: err };
+        }
+        onProgress?.(++done);
+      }
+    })
+  );
+  return results;
+}
+
+async function addFromPhotos(files) {
+  const isbns = [];
+  const unreadable = [];
+  for (const [i, file] of files.entries()) {
+    scanStatus.textContent =
+      files.length > 1
+        ? `Reading photo ${i + 1} of ${files.length}…`
+        : "Reading barcodes from the photo…";
+    try {
+      // The same book photographed twice shouldn't become two entries.
+      for (const isbn of await scanImageFile(file)) {
+        if (!isbns.includes(isbn)) isbns.push(isbn);
+      }
+    } catch (err) {
+      unreadable.push(err.message);
+    }
+  }
+
+  if (!isbns.length) {
+    scanStatus.textContent = unreadable.length
+      ? `Couldn't open ${unreadable.length === files.length ? "that picture" : "some of those pictures"} (${unreadable[0]}).`
+      : "No barcode found. The barcode is usually on the back cover — fill more of the frame with " +
+        "the books and keep it in focus, or enter the ISBN by hand below.";
+    return;
+  }
+
+  scanStatus.textContent = `Found ${plural(isbns.length, "barcode")} — looking ${
+    isbns.length === 1 ? "it" : "them"
+  } up…`;
+  const results = await lookupAll(isbns, (done) => {
+    if (isbns.length > 1) scanStatus.textContent = `Looking up book ${done} of ${isbns.length}…`;
+  });
+
+  const fresh = [];
+  const owned = [];
+  let unknown = 0;
+  let failed = 0;
+  for (const r of results) {
+    if (r.error) failed++;
+    else if (!r.book) unknown++;
+    else {
+      const had = absorbIfOwned(r.book);
+      if (had) owned.push(had);
+      else fresh.push(r.book);
+    }
+  }
+
+  // Everything in the picture is already on the Owned shelf, or nothing in it
+  // could be identified. Either way there's no sheet to show — say what
+  // happened instead of leaving the reader looking at a stale status line.
+  if (!fresh.length) {
+    const parts = [];
+    if (owned.length) {
+      parts.push(
+        owned.length === 1
+          ? `You already own “${esc(owned[0].title)}”.`
+          : `You already own ${owned.length === isbns.length ? "all" : owned.length} of those books.`
+      );
+      if (owned.length === 1) {
+        parts.push(`<button class="link-btn" data-open-existing="${esc(owned[0].id)}">Open it</button>`);
+      }
+    }
+    if (unknown) parts.push(`${plural(unknown, "barcode")} matched no book in the free catalogues.`);
+    if (failed) parts.push("Some lookups failed — check your connection and try again.");
+    scanStatus.innerHTML = parts.join(" ");
+    navigator.vibrate?.(30);
+    return;
+  }
+
+  const skipped = [];
+  if (owned.length) skipped.push(`${owned.length} already owned`);
+  if (unknown) skipped.push(`${unknown} not in the catalogues`);
+  if (failed) skipped.push(`${failed} lookup${failed === 1 ? "" : "s"} failed`);
+
+  if (fresh.length === 1) {
+    scanStatus.textContent = skipped.length ? `Skipped: ${skipped.join(", ")}.` : "";
+    queueBookForConfirm(fresh[0]);
+    return;
+  }
+  scanStatus.textContent = "";
+  showBatchConfirm(fresh, skipped);
+}
 
 scanStatus.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-open-existing]");
@@ -1589,6 +1686,25 @@ scanStatus.addEventListener("click", (e) => {
   openDetail(btn.dataset.openExisting);
 });
 
+// Already own this exact copy? Then there's nothing to decide, which is what
+// keeps scanning a stack fast. Returns a note about the copy we already hold,
+// or null if this book still needs a shelf. A book sitting on any *other*
+// shelf is not absorbed: scanning it usually means you now have it in hand,
+// and "it's on your Wishlist" should be one tap from Owned.
+function absorbIfOwned(book) {
+  const already = findExisting(book);
+  if (!(already?.sameEdition && already.book.owned)) return null;
+  // If that copy was added by title search it has no edition details; the
+  // barcode in your hand is exactly what's missing, so fill them in.
+  const vague = !already.book.isbn13;
+  if (vague) {
+    db.addBook({ ...book, id: already.book.id });
+    seriesCache.delete(already.book.id);
+    renderShelf();
+  }
+  return { id: already.book.id, title: book.title, vague };
+}
+
 async function handleFoundIsbn(isbn) {
   try {
     const book = await api.lookupByIsbn(isbn);
@@ -1596,27 +1712,15 @@ async function handleFoundIsbn(isbn) {
       scanStatus.textContent = `No book found for ISBN ${isbn}. Try searching by title below.`;
       return;
     }
-    // Already own this exact copy? Nothing to decide — say so and move on,
-    // which keeps scanning a stack of books fast. On any other shelf it's
-    // worth opening the sheet: scanning a book usually means you now have it
-    // in hand, and "it's on your Wishlist" should be one tap from Owned.
-    const already = findExisting(book);
-    if (already?.sameEdition && already.book.owned) {
-      // If that copy was added by title search it has no edition details;
-      // the barcode in your hand is exactly what's missing, so fill them in.
-      const vague = !already.book.isbn13;
-      if (vague) {
-        db.addBook({ ...book, id: already.book.id });
-        seriesCache.delete(already.book.id);
-        renderShelf();
-      }
+    const had = absorbIfOwned(book);
+    if (had) {
       // Don't dead-end: with a big shelf, scanning a book is often the
       // fastest way to *find* it, so offer the way through.
       scanStatus.innerHTML = `${
-        vague
+        had.vague
           ? `You already own “${esc(book.title)}” — filled in this edition's details.`
           : `You already own “${esc(book.title)}” — it's on your Owned shelf.`
-      } <button class="link-btn" data-open-existing="${esc(already.book.id)}">Open it</button>`;
+      } <button class="link-btn" data-open-existing="${esc(had.id)}">Open it</button>`;
       navigator.vibrate?.(30);
       return;
     }
@@ -1717,16 +1821,27 @@ $("#title-form").addEventListener("submit", async (e) => {
 
 let pendingMedium = "print";
 
+const MEDIUM_CHIPS = "#medium-choice [data-medium], #batch-medium-choice [data-medium]";
+
 function setPendingMedium(medium) {
   pendingMedium = medium;
-  document.querySelectorAll("#medium-choice [data-medium]").forEach((btn) =>
+  document.querySelectorAll(MEDIUM_CHIPS).forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.medium === medium)
   );
 }
 
-document.querySelectorAll("#medium-choice [data-medium]").forEach((btn) =>
+document.querySelectorAll(MEDIUM_CHIPS).forEach((btn) =>
   btn.addEventListener("click", () => setPendingMedium(btn.dataset.medium))
 );
+
+// The shelf tab gives its count a small pop, so an add that happened off
+// screen still registers.
+function popShelfCount(shelf) {
+  const tab = document.querySelector(`.tab[data-shelf="${shelf}"] .count`);
+  tab?.classList.remove("pop");
+  void tab?.offsetWidth; // restart the animation
+  tab?.classList.add("pop");
+}
 
 function queueBookForConfirm(book) {
   pendingBooks.push(book);
@@ -1830,10 +1945,7 @@ document.querySelectorAll("[data-add-shelf]").forEach((btn) =>
     seriesCache.delete(book.id);
     renderShelf();
     navigator.vibrate?.(15);
-    const tab = document.querySelector(`.tab[data-shelf="${shelf}"] .count`);
-    tab?.classList.remove("pop");
-    void tab?.offsetWidth; // restart the animation
-    tab?.classList.add("pop");
+    popShelfCount(shelf);
     scanStatus.textContent = `Added “${book.title}” to ${SHELF_LABEL[shelf]}.`;
     // Undoing a merge has to put the old record back — removing it would
     // take the book (and its ratings) with it.
@@ -1859,6 +1971,118 @@ document.querySelectorAll("dialog").forEach((dlg) =>
     if (region.parentElement === dlg) document.body.appendChild(region);
   })
 );
+
+// ---------- several books from one photo ----------
+
+// A photo of a pile used to mean one sheet per book, each waiting on its own
+// lookup. Show the whole find at once instead: tick off anything you didn't
+// mean to catch, then send the lot to a shelf in one tap, undoable as one.
+let batchBooks = [];
+
+function showBatchConfirm(books, skipped = []) {
+  batchBooks = books;
+  $("#batch-heading").textContent = `Add these ${books.length} books?`;
+  $("#batch-note").textContent = skipped.length
+    ? `Also in the photo — skipped: ${skipped.join(", ")}.`
+    : "Everything the photo found. Untick anything you don't want.";
+  $("#batch-list").innerHTML = books
+    .map((b, i) => {
+      const hit = findExisting(b);
+      const where = hit ? esc(SHELF_LABEL[displayShelf(hit.book)] ?? "your library") : "";
+      const note = !hit
+        ? ""
+        : hit.sameEdition
+          ? `<em>Already on your ${where} shelf — this updates it.</em>`
+          : `<em>A different edition is on your ${where} shelf — this adds a second copy.</em>`;
+      return `
+        <label class="batch-row">
+          <input type="checkbox" checked data-batch-idx="${i}" />
+          ${coverHtml(b)}
+          <span class="batch-meta">
+            <strong>${esc(b.title)}</strong><br />
+            <small>${esc(
+              [(b.authors ?? []).join(", "), b.publishDate].filter(Boolean).join(" · ")
+            )}</small>
+            ${note}
+          </span>
+        </label>`;
+    })
+    .join("");
+  setPendingMedium("print");
+  $("#batch-medium-group").classList.toggle("hidden", !trackMedium());
+  markBatchPicks();
+  if (!batchModal.open) batchModal.showModal();
+}
+
+const batchChecks = () => [...document.querySelectorAll("#batch-list [data-batch-idx]")];
+
+function markBatchPicks() {
+  $("#batch-shelf-choice").classList.toggle("owning", $("#batch-own-checkbox").checked);
+}
+$("#batch-own-checkbox").addEventListener("change", markBatchPicks);
+$("#batch-all").addEventListener("click", () => batchChecks().forEach((c) => (c.checked = true)));
+$("#batch-none").addEventListener("click", () => batchChecks().forEach((c) => (c.checked = false)));
+
+document.querySelectorAll("[data-batch-shelf]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    const chosen = batchChecks()
+      .filter((c) => c.checked)
+      .map((c) => batchBooks[Number(c.dataset.batchIdx)])
+      .filter(Boolean);
+    if (!chosen.length) {
+      $("#batch-note").textContent = "Tick at least one book first.";
+      return;
+    }
+    const shelf = btn.dataset.batchShelf;
+    const alsoOwn = $("#batch-own-checkbox").checked;
+    const owned = shelf === "owned" || (alsoOwn && shelf !== "wishlist");
+
+    // Undo has to put merged records back as they were, not delete them —
+    // that would take the book, and its ratings, with it.
+    const restore = [];
+    const remove = [];
+    for (const scanned of chosen) {
+      const hit = findExisting(scanned);
+      const book = hit?.sameEdition ? { ...scanned, id: hit.book.id } : scanned;
+      if (hit?.sameEdition) restore.push(JSON.parse(JSON.stringify(hit.book)));
+      else remove.push(book.id);
+      db.addBook({
+        ...flt.suggestContent(book), // coarse auto-tags; user-editable
+        ...book,
+        shelf,
+        owned,
+        medium: pendingMedium,
+        profile: currentProfile() ?? null,
+      });
+      if (book.workKey && !book.subjects?.length) {
+        api.fetchWorkSubjects(book.workKey).then((subjects) => {
+          if (subjects.length) db.updateBook(book.id, { subjects });
+        });
+      }
+      seriesCache.delete(book.id);
+    }
+
+    batchBooks = [];
+    batchModal.close();
+    renderShelf();
+    navigator.vibrate?.(15);
+    popShelfCount(shelf);
+    scanStatus.textContent = `Added ${plural(chosen.length, "book")} to ${SHELF_LABEL[shelf]}.`;
+    toast(`Added ${plural(chosen.length, "book")} to ${SHELF_LABEL[shelf]}`, {
+      actionLabel: "Undo",
+      onAction: () => {
+        restore.forEach((b) => db.replaceBook(b));
+        remove.forEach((id) => db.removeBook(id));
+        renderShelf();
+        toast("Put back how it was");
+      },
+    });
+  })
+);
+
+batchModal.addEventListener("close", () => {
+  batchBooks = [];
+});
 
 confirmModal.addEventListener("close", () => {
   // If dismissed without choosing, drop the current pending book.

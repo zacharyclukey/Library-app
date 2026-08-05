@@ -242,7 +242,11 @@
         <span class="method-label">Take / upload a picture</span>
         <span class="method-hint">Works with several books in one shot</span>
       </button>
-      <input type="file" id="photo-input" accept="image/*" capture="environment" hidden />
+      <!-- No `capture` attribute: it forces the camera and takes the photo
+           library away, so "upload a picture" of a shelf you already shot
+           becomes impossible. `multiple` lets a big shelf go in a few
+           photos at once. -->
+      <input type="file" id="photo-input" accept="image/*" multiple hidden />
     </div>
 
     <div id="scanner-area" class="scanner-area hidden">
@@ -302,6 +306,47 @@
         <span data-ico="books"></span> Owned<span class="pick-also">only</span>
       </button>
       <button class="shelf-pick" data-add-shelf="wishlist"><span data-ico="gift"></span> Wishlist</button>
+    </div>
+  </dialog>
+
+  <!-- ============ Several books at once (photo of a pile) ============ -->
+  <dialog id="batch-modal" class="modal sheet">
+    <div class="modal-header">
+      <h2 id="batch-heading">Add these books?</h2>
+      <button class="close-btn" data-close="batch-modal" aria-label="Close" data-ico="close"></button>
+    </div>
+    <p id="batch-note" class="scan-status"></p>
+    <div class="batch-tools">
+      <button type="button" id="batch-all" class="link-btn">Select all</button>
+      <button type="button" id="batch-none" class="link-btn">Select none</button>
+    </div>
+    <div id="batch-list" class="batch-list"></div>
+    <div class="filter-group hidden" id="batch-medium-group" style="margin-bottom:0.7rem">
+      <span class="filter-label">Copy type</span>
+      <div class="profile-filter" id="batch-medium-choice" style="margin-top:0.25rem">
+        <button class="filter-chip active" data-medium="print"><span data-ico="print"></span><span>Print</span></button>
+        <button class="filter-chip" data-medium="ebook"><span data-ico="tablet"></span><span>E-book / Kindle</span></button>
+        <button class="filter-chip" data-medium="audio"><span data-ico="headphones"></span><span>Audiobook / Audible</span></button>
+      </div>
+    </div>
+    <label class="also-own">
+      <input type="checkbox" id="batch-own-checkbox" checked />
+      <span>
+        <strong>I own these copies</strong> — uncheck for library loans,
+        Kindle&nbsp;Unlimited or borrowed audiobooks.
+      </span>
+    </label>
+    <div class="shelf-choice" id="batch-shelf-choice">
+      <button class="shelf-pick" data-batch-shelf="tbr">
+        <span data-ico="bookmark"></span> To Read<span class="pick-also">+ Owned</span>
+      </button>
+      <button class="shelf-pick" data-batch-shelf="completed">
+        <span data-ico="check"></span> Finished<span class="pick-also">+ Owned</span>
+      </button>
+      <button class="shelf-pick" data-batch-shelf="owned">
+        <span data-ico="books"></span> Owned<span class="pick-also">only</span>
+      </button>
+      <button class="shelf-pick" data-batch-shelf="wishlist"><span data-ico="gift"></span> Wishlist</button>
     </div>
   </dialog>
 
