@@ -1,7 +1,10 @@
 # No trailing slash: this is sometimes a symlink to a shared install rather
 # than a real folder, and "node_modules/" only matches a directory.
 node_modules
-# Screenshots the test suites write as they run
+# Screenshots the test suites write as they run. Some suites run with the
+# repo root as their working directory, so their shots land there too —
+# the leading slash keeps the rule from reaching icons/ and assets/.
 tests/*.png
+/*.png
 *.log
 .DS_Store
