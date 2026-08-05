@@ -7,6 +7,7 @@ Start wherever fits.
 | Not a programmer, and want to understand your own app | [WALKTHROUGH.md](WALKTHROUGH.md) |
 | A programmer seeing this for the first time | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Wondering *why* something is built that way | [DECISIONS.md](DECISIONS.md) |
+| Working on Discover, or wondering where recommendations are headed | [RECOMMENDATIONS.md](RECOMMENDATIONS.md) |
 | Reviewing it for safety, or thinking about going public | [SECURITY.md](SECURITY.md) |
 | Debugging, or writing a migration | [DATA.md](DATA.md) |
 | Swapping in your own artwork, icons or colours | [ASSETS.md](ASSETS.md) |
