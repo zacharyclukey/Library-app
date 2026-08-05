@@ -450,7 +450,7 @@ function undoable(message, book, apply) {
 // sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
 // stay as modals — they're short task flows on top of whatever you're doing.
 
-const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends"];
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends", "appearance"];
 const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
 let currentScreen = "shelves";
 
@@ -467,7 +467,7 @@ function showScreen(name, { push = true } = {}) {
   );
 
   // Sub-screens keep their parent's nav item lit.
-  if (["profile", "sync", "friends"].includes(name)) $("#settings-btn").classList.add("active");
+  if (["profile", "sync", "friends", "appearance"].includes(name)) $("#settings-btn").classList.add("active");
   if (name === "stats") $("#nav-shelves").classList.add("active");
 
   if (name === "discover") renderDiscover();
@@ -477,6 +477,7 @@ function showScreen(name, { push = true } = {}) {
   else if (name === "sync") renderSyncScreen();
   else if (name === "stats") renderStatsScreen();
   else if (name === "friends") renderFriendsScreen();
+  else if (name === "appearance") renderAppearanceScreen();
 
   if (push && history.state?.screen !== name) {
     history.pushState({ screen: name }, "");
@@ -2908,17 +2909,21 @@ async function runExport(format) {
 
 $("#settings-btn").addEventListener("click", () => showScreen("settings"));
 
+// Settings is grouped the way a person thinks, not the order features
+// shipped: who you are, what you share, how books are tracked, how it looks,
+// and the data itself. Each group is small enough to scan; anything with real
+// depth (profiles, the shared library, appearance) is a row that opens its
+// own screen rather than a widget squatting on this one.
 function renderSettingsScreen() {
   const el = $("#settings-content");
   const me = currentProfile();
   const household = sync.isActive()
     ? sync.currentLibraryName() ?? sync.currentHousehold()
     : null;
-  const skin = themes.currentSkin();
-  const mode = themes.currentMode();
 
   el.innerHTML = `
     <div class="settings-section">
+      <span class="filter-label">You</span>
       <button class="settings-row" data-go="profile">
         <span class="row-main">
           <span class="row-icon">${icon("user")}</span>
@@ -2928,6 +2933,19 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
+      <button class="settings-row" data-go="stats">
+        <span class="row-main">
+          <span class="row-icon">${icon("books")}</span>
+          <span>Your reading
+            <span class="row-sub">Totals, this year, most-read authors and genres</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Sharing</span>
       <button class="settings-row" data-go="sync">
         <span class="row-main">
           <span class="row-icon">${icon("users")}</span>
@@ -2954,24 +2972,21 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
-      <button class="settings-row" data-go="stats">
+      <button class="settings-row" id="community-toggle" ${community.isAvailable() ? "" : "disabled"}>
         <span class="row-main">
-          <span class="row-icon">${icon("books")}</span>
-          <span>Your reading
-            <span class="row-sub">Totals, this year, most-read authors and genres</span>
+          <span class="row-icon">${icon("globe")}</span>
+          <span>Community sharing
+            <span class="row-sub">${community.isAvailable()
+              ? "Share your ratings, tags &amp; reviews (with your first name) to power everyone's recommendations"
+              : "Needs the shared-library Firebase setup first"}</span>
           </span>
         </span>
-        <span class="row-go">›</span>
+        <span class="row-go">${community.sharingEnabled() ? "On" : "Off"}</span>
       </button>
-      <button class="settings-row" data-go="import">
-        <span class="row-main">
-          <span class="row-icon">${icon("download")}</span>
-          <span>Restore from backup
-            <span class="row-sub">Load a Shelfie JSON export</span>
-          </span>
-        </span>
-        <span class="row-go">›</span>
-      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Your books</span>
       <button class="settings-row" id="medium-toggle">
         <span class="row-main">
           <span class="row-icon">${icon("headphones")}</span>
@@ -2990,16 +3005,33 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">${trackContent() ? "On" : "Off"}</span>
       </button>
-      <button class="settings-row" id="community-toggle" ${community.isAvailable() ? "" : "disabled"}>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Appearance</span>
+      <button class="settings-row" data-go="appearance">
         <span class="row-main">
-          <span class="row-icon">${icon("globe")}</span>
-          <span>Community sharing
-            <span class="row-sub">${community.isAvailable()
-              ? "Share your ratings, tags &amp; reviews (with your first name) to power everyone's recommendations"
-              : "Needs the shared-library Firebase setup first"}</span>
+          <span class="row-icon">${icon("palette")}</span>
+          <span>Aesthetic &amp; artwork
+            <span class="row-sub">${esc(themes.themeName())} · ${
+              esc(themes.MODES.find(([v]) => v === themes.currentMode())?.[1] ?? "Auto")
+            }</span>
           </span>
         </span>
-        <span class="row-go">${community.sharingEnabled() ? "On" : "Off"}</span>
+        <span class="row-go">›</span>
+      </button>
+    </div>
+
+    <div class="settings-section">
+      <span class="filter-label">Data</span>
+      <button class="settings-row" data-go="import">
+        <span class="row-main">
+          <span class="row-icon">${icon("download")}</span>
+          <span>Restore from backup
+            <span class="row-sub">Load a Shelfie JSON export</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
       </button>
       <button class="settings-row" id="persist-toggle">
         <span class="row-main">
@@ -3012,45 +3044,7 @@ function renderSettingsScreen() {
       </button>
     </div>
 
-    <div class="settings-section">
-      <span class="filter-label">${icon("palette")} Aesthetic</span>
-      <div class="theme-grid">
-        ${themes.THEMES.map(
-          (t) => `
-          <button class="theme-card ${skin === t.id ? "active" : ""}" data-skin="${t.id}">
-            <span class="theme-swatch">
-              ${t.swatch.map((c) => `<i style="background:${esc(c)}"></i>`).join("")}
-            </span>
-            <span class="theme-name">${esc(t.name)}${skin === t.id ? " ✓" : ""}</span>
-            <span class="theme-blurb">${esc(t.blurb)}</span>
-          </button>`
-        ).join("")}
-      </div>
-
-      <span class="filter-label" style="display:block;margin-top:0.9rem">Brightness</span>
-      <div class="seg" style="margin-top:0.45rem">
-        ${themes.MODES.map(
-          ([v, label]) =>
-            `<button class="filter-chip ${mode === v ? "active" : ""}" data-mode="${v}">${label}</button>`
-        ).join("")}
-      </div>
-
-      <p class="settings-note">
-        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork goes
-        in <code>assets/</code>, and any icon can be replaced by dropping a file at
-        <code>assets/icons/&lt;name&gt;.svg</code>.
-        <button class="link-btn" id="refresh-assets">Check for new artwork</button>
-      </p>
-    </div>
-
     <span class="credit">Shelfie · book data from Open Library &amp; Google Books</span>`;
-
-  $("#refresh-assets").addEventListener("click", async () => {
-    const [found, icons] = await Promise.all([refreshCustomAssets(), refreshIconOverrides()]);
-    const n = Object.keys(found ?? {}).length + (icons?.length ?? 0);
-    renderSettingsScreen();
-    toast(n ? `Using ${n} file${n === 1 ? "" : "s"} from assets/` : "No artwork found in assets/");
-  });
 
   $("#community-toggle").addEventListener("click", () => {
     if (!community.isAvailable()) return;
@@ -3091,18 +3085,6 @@ function renderSettingsScreen() {
     renderSettingsScreen();
     renderShelf();
   });
-  el.querySelectorAll("[data-skin]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      themes.setSkin(btn.dataset.skin);
-      renderSettingsScreen();
-    })
-  );
-  el.querySelectorAll("[data-mode]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      themes.setMode(btn.dataset.mode);
-      renderSettingsScreen();
-    })
-  );
   el.querySelectorAll("[data-go]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const target = btn.dataset.go;
@@ -3110,7 +3092,69 @@ function renderSettingsScreen() {
       else if (target === "sync") showScreen("sync");
       else if (target === "stats") showScreen("stats");
       else if (target === "friends") showScreen("friends");
+      else if (target === "appearance") showScreen("appearance");
       else $("#import-input").click();
+    })
+  );
+}
+
+// Appearance: the aesthetic grid, brightness, and the artwork instructions.
+// Its own screen because the theme cards are the physically biggest thing in
+// settings, and because the design work ahead (spine palettes, textures)
+// belongs somewhere with room to grow.
+function renderAppearanceScreen() {
+  const el = $("#appearance-content");
+  const skin = themes.currentSkin();
+  const mode = themes.currentMode();
+
+  el.innerHTML = `
+    <div class="settings-section">
+      <span class="filter-label">Aesthetic</span>
+      <div class="theme-grid">
+        ${themes.THEMES.map(
+          (t) => `
+          <button class="theme-card ${skin === t.id ? "active" : ""}" data-skin="${t.id}">
+            <span class="theme-swatch">
+              ${t.swatch.map((c) => `<i style="background:${esc(c)}"></i>`).join("")}
+            </span>
+            <span class="theme-name">${esc(t.name)}${skin === t.id ? " ✓" : ""}</span>
+            <span class="theme-blurb">${esc(t.blurb)}</span>
+          </button>`
+        ).join("")}
+      </div>
+
+      <span class="filter-label" style="display:block;margin-top:0.9rem">Brightness</span>
+      <div class="seg" style="margin-top:0.45rem">
+        ${themes.MODES.map(
+          ([v, label]) =>
+            `<button class="filter-chip ${mode === v ? "active" : ""}" data-mode="${v}">${label}</button>`
+        ).join("")}
+      </div>
+
+      <p class="settings-note">
+        “Yours” is your own palette — see <code>css/custom.css</code>. Artwork goes
+        in <code>assets/</code>, and any icon can be replaced by dropping a file at
+        <code>assets/icons/&lt;name&gt;.svg</code>.
+        <button class="link-btn" id="refresh-assets">Check for new artwork</button>
+      </p>
+    </div>`;
+
+  $("#refresh-assets").addEventListener("click", async () => {
+    const [found, icons] = await Promise.all([refreshCustomAssets(), refreshIconOverrides()]);
+    const n = Object.keys(found ?? {}).length + (icons?.length ?? 0);
+    renderAppearanceScreen();
+    toast(n ? `Using ${n} file${n === 1 ? "" : "s"} from assets/` : "No artwork found in assets/");
+  });
+  el.querySelectorAll("[data-skin]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      themes.setSkin(btn.dataset.skin);
+      renderAppearanceScreen();
+    })
+  );
+  el.querySelectorAll("[data-mode]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      themes.setMode(btn.dataset.mode);
+      renderAppearanceScreen();
     })
   );
 }

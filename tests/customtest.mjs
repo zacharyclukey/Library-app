@@ -34,6 +34,8 @@ async function phone(skin) {
   const { ctx, page } = await phone(null);
   await page.click("#settings-btn");
   await page.waitForTimeout(600);
+  await page.click('[data-go="appearance"]');   // aesthetics live one screen deeper now
+  await page.waitForTimeout(500);
   const skins = await page.$$eval(".theme-card", (e) =>
     e.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
   console.log("1. aesthetics offered:", skins.length);

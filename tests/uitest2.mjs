@@ -89,6 +89,8 @@ await page.click('#nav-shelves');
 await page.click("#settings-btn");
 await page.waitForTimeout(300);
 console.log("settings rows:", await page.$$eval(".settings-row", (e) => e.map((x) => x.textContent.replace(/\s+/g, " ").trim())));
+await page.click('[data-go="appearance"]');
+await page.waitForTimeout(300);
 await page.click('[data-mode="dark"]');
 await page.waitForTimeout(300);
 console.log("theme attr:", await page.getAttribute("html", "data-mode"));
@@ -97,6 +99,9 @@ await page.click('#nav-shelves');
 await page.waitForTimeout(200);
 await page.screenshot({ path: "v2-dark-grid.png" });
 await page.click("#settings-btn");
+await page.waitForTimeout(300);
+await page.click('[data-go="appearance"]');
+await page.waitForTimeout(300);
 await page.click('[data-mode="auto"]');
 await page.click('#nav-shelves');
 
