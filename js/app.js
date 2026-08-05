@@ -450,7 +450,7 @@ function undoable(message, book, apply) {
 // sub-screens) are real screens rather than dialogs. Add, Confirm and Detail
 // stay as modals — they're short task flows on top of whatever you're doing.
 
-const SCREENS = ["shelves", "discover", "export", "settings", "profile", "sync", "stats", "friends", "appearance"];
+const SCREENS = ["shelves", "discover", "export", "settings", "profile", "account", "sync", "stats", "friends", "appearance"];
 const SCREEN_NAV = { shelves: "nav-shelves", discover: "discover-btn", export: "export-btn", settings: "settings-btn" };
 let currentScreen = "shelves";
 
@@ -467,7 +467,7 @@ function showScreen(name, { push = true } = {}) {
   );
 
   // Sub-screens keep their parent's nav item lit.
-  if (["profile", "sync", "friends", "appearance"].includes(name)) $("#settings-btn").classList.add("active");
+  if (["profile", "sync", "friends", "appearance", "account"].includes(name)) $("#settings-btn").classList.add("active");
   if (name === "stats") $("#nav-shelves").classList.add("active");
 
   if (name === "discover") renderDiscover();
@@ -478,6 +478,7 @@ function showScreen(name, { push = true } = {}) {
   else if (name === "stats") renderStatsScreen();
   else if (name === "friends") renderFriendsScreen();
   else if (name === "appearance") renderAppearanceScreen();
+  else if (name === "account") renderAccountScreen();
 
   if (push && history.state?.screen !== name) {
     history.pushState({ screen: name }, "");
@@ -1368,24 +1369,24 @@ function renderProfileScreen() {
     Books added before profiles existed are shared — open one and use
     “Belongs to” to assign it.</p>`;
 
-  el.querySelectorAll("[data-pick-profile]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      localStorage.setItem(PROFILE_KEY, btn.dataset.pickProfile);
-      memberFilter = "me";
-      updateProfileChip();
-      renderShelf();
-      showScreen("shelves");
-    })
-  );
-  $("#new-profile-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const name = $("#new-profile-input").value.trim();
-    if (!name) return;
+  // Who you are follows the account, not the container the app happens to be
+  // running in — so picking a name here settles it everywhere you're signed in.
+  const setProfile = (name) => {
     localStorage.setItem(PROFILE_KEY, name);
+    sync.saveAccountProfile({ profileName: name }).catch(() => {});
     memberFilter = "me";
     updateProfileChip();
     renderShelf();
     showScreen("shelves");
+  };
+
+  el.querySelectorAll("[data-pick-profile]").forEach((btn) =>
+    btn.addEventListener("click", () => setProfile(btn.dataset.pickProfile))
+  );
+  $("#new-profile-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#new-profile-input").value.trim();
+    if (name) setProfile(name);
   });
 }
 
@@ -2934,6 +2935,20 @@ function renderSettingsScreen() {
         </span>
         <span class="row-go">›</span>
       </button>
+      ${sync.isConfigured() ? `
+      <button class="settings-row" data-go="account">
+        <span class="row-main">
+          <span class="row-icon">${icon("shield")}</span>
+          <span>Account
+            <span class="row-sub">${
+              sync.accountHint()
+                ? esc(sync.accountHint())
+                : "Not signed in — this device only"
+            }</span>
+          </span>
+        </span>
+        <span class="row-go">›</span>
+      </button>` : ""}
       <button class="settings-row" data-go="stats">
         <span class="row-main">
           <span class="row-icon">${icon("books")}</span>
@@ -3089,12 +3104,11 @@ function renderSettingsScreen() {
   el.querySelectorAll("[data-go]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const target = btn.dataset.go;
-      if (target === "profile") showScreen("profile");
-      else if (target === "sync") showScreen("sync");
-      else if (target === "stats") showScreen("stats");
-      else if (target === "friends") showScreen("friends");
-      else if (target === "appearance") showScreen("appearance");
-      else $("#import-input").click();
+      // Anything that names a screen opens it; the import row is the one
+      // that doesn't, so it stays the fallback.
+      if (["profile", "account", "sync", "stats", "friends", "appearance"].includes(target)) {
+        showScreen(target);
+      } else $("#import-input").click();
     })
   );
 }
@@ -3527,6 +3541,141 @@ async function renderFeed() {
   }`;
 }
 
+// ---------- the account screen ----------
+//
+// An account exists to answer one question the app used to get wrong: are you
+// the same person as the one who was here a minute ago in a different window?
+// Without one, the answer lives in this container's storage — and the
+// home-screen app and Safari have different containers, so the same person
+// came out as two. Signing in makes both resolve to one identity, carries the
+// profile name across, and keeps your own library in step even when you're
+// not sharing with anyone.
+function renderAccountScreen() {
+  const el = $("#account-content");
+  if (!sync.isConfigured()) {
+    el.innerHTML = `<p>Accounts need the same free Firebase project as the
+      shared library. <button class="link-btn" data-go="sync">Set that up</button>
+      and this screen will offer sign-in.</p>`;
+    el.querySelector("[data-go]").addEventListener("click", () => showScreen("sync"));
+    return;
+  }
+
+  if (!sync.accountAvailable()) {
+    el.innerHTML = `<p class="muted">Connecting…</p>`;
+    sync.warmup()
+      .then(() => { if (currentScreen === "account") renderAccountScreen(); })
+      .catch(() => {
+        el.innerHTML = `<p class="sync-error">${icon("alert")} Couldn't reach the
+          sign-in service. Your library is safe on this device — try again when
+          you're back online.</p>`;
+      });
+    return;
+  }
+
+  const email = sync.accountEmail();
+  if (email) {
+    const lib = sync.currentLibraryName();
+    el.innerHTML = `
+      <div class="settings-section">
+        <span class="filter-label">Signed in</span>
+        <p style="margin:0.4rem 0 0">${icon("check")} <strong>${esc(email)}</strong></p>
+        <p class="muted" style="font-size:0.8rem;margin:0.5rem 0 0">
+          You'll be the same person in the home-screen app and in the browser,
+          and on any other device you sign in on. Your profile name
+          ${currentProfile() ? `(<strong>${esc(currentProfile())}</strong>) ` : ""}travels
+          with you.</p>
+        ${lib
+          ? `<p class="muted" style="font-size:0.8rem;margin:0.5rem 0 0">
+              Sharing <strong>${esc(lib)}</strong> — signing in on a new device
+              puts you straight back in, no approval needed.</p>`
+          : `<p class="muted" style="font-size:0.8rem;margin:0.5rem 0 0">
+              ${sync.isPersonalActive() ? icon("check") + " Your library is backed up to this account"
+                : "Your library stays on this device"} — it's yours alone until you
+              join a shared library.</p>`}
+      </div>
+      <div class="settings-section">
+        <div class="detail-actions">
+          <button class="secondary-btn" id="sign-out-btn">Sign out</button>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin:0.4rem 0 0">
+          Signing out leaves your books on this device. It doesn't delete
+          anything from the account.</p>
+      </div>`;
+    el.querySelector("#sign-out-btn").addEventListener("click", async () => {
+      if (!confirm("Sign out of this account on this device?")) return;
+      await sync.signOutAccount();
+      toast("Signed out.");
+      renderAccountScreen();
+      renderSettingsScreen();
+      updateSyncIndicator();
+    });
+    return;
+  }
+
+  el.innerHTML = `
+    <p>Right now this device is its own island: open Shelfie from your home
+    screen and from Safari and the app treats you as two different people,
+    because each keeps its own storage. An account is how it knows you're you.</p>
+    ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
+    <form id="account-form">
+      <div class="inline-form">
+        <input type="email" id="account-email" placeholder="Email" autocomplete="email" />
+      </div>
+      <div class="inline-form">
+        <input type="password" id="account-password" placeholder="Password (6+ characters)"
+               autocomplete="current-password" />
+      </div>
+      <div class="detail-actions" style="margin-top:0.35rem">
+        <button type="submit" class="primary-btn" data-intent="signin">Sign in</button>
+        <button type="submit" class="secondary-btn" style="margin-top:0"
+                data-intent="create">Create account</button>
+      </div>
+    </form>
+    <p class="muted" style="font-size:0.78rem;margin-top:0.7rem">
+      This is separate from any shared-library password. Your books stay on
+      this device either way — an account adds a backup of your own library and
+      keeps every window signed in as the same you.</p>`;
+
+  let intent = "signin";
+  el.querySelectorAll("#account-form [data-intent]").forEach((btn) =>
+    btn.addEventListener("click", () => { intent = btn.dataset.intent; })
+  );
+  el.querySelector("#account-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("#account-email").value.trim();
+    const password = $("#account-password").value;
+    if (!email || !password) return toast("Enter an email and a password.");
+    try {
+      // Creating on a device that already owns books must LINK, never replace:
+      // a new uid would orphan everything this device wrote. Signing in is the
+      // opposite case and is allowed to swap identity.
+      if (intent === "create") await sync.linkAccount(email, password);
+      else await sync.signInAccount(email, password);
+    } catch (err) {
+      toast(err.message, { ms: 8000 });
+      return;
+    }
+    await afterSignIn();
+    toast(intent === "create" ? "Account created — you're signed in." : "Signed in.");
+  });
+}
+
+// Signing in changes who the app thinks you are, so everything keyed to that
+// has to catch up: the account's profile name and library membership, then
+// whichever sync channel that leaves you on.
+async function afterSignIn() {
+  try {
+    await initSync();
+  } catch (err) {
+    syncError = err.message;
+  }
+  updateProfileChip();
+  renderShelf();
+  renderAccountScreen();
+  renderSettingsScreen();
+  updateSyncIndicator();
+}
+
 function renderSyncScreen() {
   const el = $("#sync-content");
 
@@ -3899,8 +4048,44 @@ async function activateNamed(name, password, create) {
   renderSyncScreen();
 }
 
+// Your account decides who you are before anything else does. The home-screen
+// app and Safari are separate storage containers, so each was inventing its
+// own anonymous identity and its own profile — the same person appearing as
+// two different people depending on which icon they tapped. Signing in makes
+// both contexts resolve to one uid, and the account doc carries the profile
+// name and shared-library membership across, so they stop disagreeing.
+async function restoreAccount() {
+  let acct = null;
+  try {
+    acct = await sync.accountBootstrap();
+  } catch {
+    return null; // offline, or the SDK couldn't load — local identity stands
+  }
+  if (!acct) return null;
+
+  // The name travels with the account, so a new device is you rather than a
+  // stranger who has to introduce themselves.
+  if (acct.profileName && acct.profileName !== currentProfile()) {
+    localStorage.setItem(PROFILE_KEY, acct.profileName);
+    updateProfileChip();
+  } else if (!acct.profileName && currentProfile()) {
+    sync.saveAccountProfile({ profileName: currentProfile() }).catch(() => {});
+  }
+
+  // Signed in on a device that isn't in the shared library your account is a
+  // member of: follow the account in rather than asking anyone to approve a
+  // person who is demonstrably already inside.
+  if (acct.libId && !sync.currentHousehold()) {
+    sync.adoptLibrary(acct.libId, acct.libName);
+  }
+  return acct;
+}
+
 async function initSync() {
-  if (sync.isConfigured() && !sync.currentHousehold() && sync.pendingJoin()) {
+  if (!sync.isConfigured()) return;
+  const acct = await restoreAccount();
+
+  if (!sync.currentHousehold() && sync.pendingJoin()) {
     sync.watchPending({
       localBooks: () => db.getAllBooks(),
       onRemote: onRemoteBooks,
@@ -3911,14 +4096,23 @@ async function initSync() {
     });
     updateSyncIndicator();
   }
-  if (sync.isConfigured() && sync.currentHousehold()) {
+
+  if (sync.currentHousehold()) {
     try {
       await sync.start(onRemoteBooks, onSyncError, syncOpts());
     } catch (err) {
       syncError = err.message;
     }
-    updateSyncIndicator();
+  } else if (acct) {
+    // Signed in and sharing with nobody: your own library is the one that
+    // syncs, so the same books are there in every context you sign in to.
+    try {
+      await sync.startPersonal(onRemoteBooks, onSyncError, { localBooks: db.getAllBooks() });
+    } catch (err) {
+      syncError = err.message;
+    }
   }
+  updateSyncIndicator();
 }
 
 // Books scanned before genre support have no subject tags; fetch them
