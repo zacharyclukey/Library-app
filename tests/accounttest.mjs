@@ -236,7 +236,97 @@ const toast = await D.page.locator("#toast-region").textContent();
 console.log("9. wrong password says so:", /No sign-in matches/.test(toast));
 if (!/No sign-in matches/.test(toast)) problems.push("wrong password did not produce the friendly error");
 
+// ---------- The migration case: a household that predates accounts ----------
+// Existing users' member docs were written before the uid field existed. The
+// fix must reach them with no ceremony: opening the updated app once re-stamps
+// the doc (announceMember runs on every boot), and only then do they link.
+// Simulated here by creating a library, then stripping the uid stamps out of
+// the cloud — the exact shape an old household is in on upgrade day.
+
+const E = await phone("Existing", [
+  { id: "e1", title: "The Fifth Season", authors: ["N. K. Jemisin"], shelf: "owned",
+    owned: true, addedAt: "2024-06-01T00:00:00Z" },
+  { id: "e2", title: "Circe", authors: ["Madeline Miller"], shelf: "owned",
+    owned: true, addedAt: "2024-06-02T00:00:00Z" },
+]);
+await openSyncScreen(E.page);
+await E.page.fill("#library-name", "Old Household");
+await E.page.fill("#library-password", "longmarriage");
+await E.page.click('[data-intent="create"]');
+await E.page.waitForTimeout(900);
+const oldLibId = await E.page.evaluate(() => localStorage.getItem("shelfie.household.v1"));
+
+// Rewind the cloud to the pre-account format: no uid on any member doc, and
+// a partner device that has never seen the new code.
+for (const [path, data] of cloud.entries()) {
+  if (path.includes("/_member:") && data.uid) {
+    const { uid: _dropped, ...old } = data;
+    cloud.set(path, old);
+  }
+}
+cloud.set(`households/${oldLibId}/books/_member:kelsey-dev`, {
+  _member: true, deviceId: "kelsey-dev", name: "Kelsey",
+  joinedAt: "2024-06-01T00:00:00Z", lastSeen: "2025-08-01T00:00:00Z",
+});
+cloud.set(`households/${oldLibId}/books/k1`, {
+  id: "k1", title: "Book Lovers", authors: ["Emily Henry"], shelf: "owned",
+  owned: true, addedAt: "2024-07-01T00:00:00Z",
+});
+
+// Upgrade day: the existing phone just opens the app. No taps.
+await E.page.reload();
+await E.page.waitForTimeout(1200);
+const eDoc = [...cloud.entries()].find(([p]) => p.includes("/_member:") && !p.endsWith("kelsey-dev"))?.[1];
+console.log("10. old member doc healed on boot:", !!eDoc?.uid);
+if (!eDoc?.uid) problems.push("existing member's doc was not re-stamped with a uid on boot");
+
+// Now they link, as an existing user would.
+await openSyncScreen(E.page);
+await E.page.fill("#link-email", "existing@example.com");
+await E.page.fill("#link-password", "hunter22");
+await E.page.click("#link-account-form button[type=submit]");
+await E.page.waitForTimeout(600);
+console.log("11. existing user linked, uid unchanged:",
+  accounts.get("existing@example.com")?.uid === eDoc.uid);
+if (accounts.get("existing@example.com")?.uid !== eDoc.uid) {
+  problems.push("linking on an existing account changed the uid");
+}
+
+// The reinstall: fresh storage, sign in, join — should walk straight in and
+// see the WHOLE shared shelf, the partner's book included.
+const F = await phone("Existing");
+await openSyncScreen(F.page);
+await F.page.waitForTimeout(600);
+await F.page.fill("#signin-email", "existing@example.com");
+await F.page.fill("#signin-password", "hunter22");
+await F.page.click("#signin-form button[type=submit]");
+await F.page.waitForTimeout(600);
+await F.page.fill("#library-name", "Old Household");
+await F.page.fill("#library-password", "longmarriage");
+await F.page.click('[data-intent="join"]');
+await F.page.waitForTimeout(1000);
+const fState = await F.page.evaluate(() => ({
+  household: localStorage.getItem("shelfie.household.v1"),
+  pending: localStorage.getItem("shelfie.pendingJoin.v1"),
+}));
+console.log("12. reinstall recognised in old household:", !!fState.household && !fState.pending);
+if (!fState.household || fState.pending) {
+  problems.push("reinstall into a pre-account household was not recognised");
+}
+await F.page.click("#nav-shelves");
+await F.page.waitForTimeout(800);
+const fBooks = await F.page.locator(".grid-book").count();
+console.log("13. reinstall sees the shared shelf:", fBooks, "books (want 3)");
+if (fBooks !== 3) problems.push(`reinstall shows ${fBooks} books, expected 3 (both partners')`);
+
+// And the partner who never touched any of this is undisturbed.
+const kelseyDoc = cloud.get(`households/${oldLibId}/books/_member:kelsey-dev`);
+const kelseyBook = cloud.get(`households/${oldLibId}/books/k1`);
+console.log("14. partner untouched:", !!kelseyDoc && !!kelseyBook);
+if (!kelseyDoc || !kelseyBook) problems.push("the partner's membership or books were disturbed");
+
 await A.ctx.close(); await B.ctx.close(); await C.ctx.close(); await D.ctx.close();
+await E.ctx.close(); await F.ctx.close();
 await browser.close();
 
 if (problems.length) console.log("\nPROBLEMS:\n- " + problems.join("\n- "));
