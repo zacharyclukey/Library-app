@@ -23,6 +23,19 @@
 
   --shadow-1: 0 1px 2px rgba(50, 35, 20, 0.05), 0 1px 3px rgba(50, 35, 20, 0.08);
   --shadow-2: 0 3px 10px rgba(50, 35, 20, 0.13);
+
+  /* How a control answers a thumb.
+     The app disables the browser's own tap flash (see body), which on a phone
+     used to mean a tap produced no response at all until the content changed
+     — every control looked pressable and none of them acted it.
+     A control rests on a hard lip: a shadow with no blur, sitting directly
+     under its bottom edge, the way a key stands above its keyboard. Pressing
+     travels the control down by exactly that lip and takes the lip away, so
+     the key bottoms out. That's the whole illusion of weight. */
+  --lip: 2px;                              /* how far a control stands proud */
+  --lip-ink: rgba(60, 42, 24, 0.26);       /* the shaded edge under it */
+  --lip-ink-strong: rgba(60, 42, 24, 0.4); /* under accent-filled controls */
+  --press-tint: rgba(60, 42, 24, 0.06);    /* the surface darkening on contact */
   --shadow-3: 0 14px 38px rgba(40, 28, 16, 0.3);
 
   /* Vertical wood grain for the header. It repeats along x only, so the app
@@ -79,6 +92,13 @@
   color-scheme: dark;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 3px 12px rgba(0, 0, 0, 0.55);
+
+  /* In the dark the lip can't be a darker shade — there's nothing darker to
+     read against. It becomes the absence of the light that catches every
+     other top edge, plus a real shadow beneath. */
+  --lip-ink: rgba(0, 0, 0, 0.55);
+  --lip-ink-strong: rgba(0, 0, 0, 0.7);
+  --press-tint: rgba(0, 0, 0, 0.22);
   --shadow-3: 0 14px 38px rgba(0, 0, 0, 0.7);
 }
 
@@ -2434,4 +2454,153 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 .cc-review:empty::before {
   content: "No review yet."; font-style: normal;
   color: color-mix(in srgb, var(--stock-ink, #4a3b28) 42%, transparent);
+}
+
+
+/* ============================================================
+   Press — how every control answers a thumb
+
+   Kept at the end of the file so it settles the box-shadow argument with the
+   controls above, which each declare their own resting shadow.
+
+   Why this exists: `-webkit-tap-highlight-color: transparent` on body turns
+   off the flash iOS gives a tap for free, and almost nothing here replaced
+   it. There were 25 :hover rules — which a phone has no use for — and three
+   :active rules in the whole stylesheet, two of them on a slider and a rail.
+   So a tab, a chip, a settings row and a tool button all looked pressable
+   and none of them acknowledged being pressed. That reads as weightless: the
+   surfaces are flat, the borders are hairlines, and nothing moves.
+
+   Two groups, because a 44px pill and a full-width row want different
+   physics:
+
+   KEYS   pills and buttons. Stand on a lip, travel down onto it, tint.
+   SLABS  rows and cards big enough that scaling looks like a glitch. They
+          sink and tint, no bounce.
+   ============================================================ */
+
+.tool-btn,
+.filter-chip,
+.shelf-pick,
+.primary-btn,
+.secondary-btn,
+.danger-btn,
+.back-btn,
+.close-btn,
+.method-btn,
+.approve-btn,
+.qa-btn,
+.qa-details,
+.qa-remove,
+.settings-row,
+.theme-card,
+.profile-chip {
+  /* The lip first, then whatever soft shadow the control already wanted. */
+  box-shadow: 0 var(--lip) 0 var(--lip-ink), var(--shadow-1);
+  transition:
+    transform 0.09s ease,
+    box-shadow 0.09s ease,
+    background-color 0.09s ease,
+    border-color 0.12s ease;
+}
+
+/* Accent-filled controls sit on a deeper edge — a painted key, not a pale
+   one, so the lip has to be darker than the paint to read at all. */
+.primary-btn,
+.approve-btn {
+  box-shadow: 0 var(--lip) 0 var(--lip-ink-strong), var(--shadow-1);
+}
+
+/* Bottoming out: travel exactly the height of the lip, and lose it. */
+.tool-btn:active,
+.filter-chip:active,
+.shelf-pick:active,
+.primary-btn:active,
+.secondary-btn:active,
+.danger-btn:active,
+.back-btn:active,
+.close-btn:active,
+.method-btn:active,
+.approve-btn:active,
+.qa-btn:active,
+.qa-details:active,
+.qa-remove:active,
+.theme-card:active,
+.profile-chip:active {
+  transform: translateY(var(--lip));
+  box-shadow: 0 0 0 var(--lip-ink), inset 0 1px 2px var(--press-tint);
+  background-image: linear-gradient(var(--press-tint), var(--press-tint));
+}
+
+/* Slabs: a settings row is too wide to bounce convincingly. It sinks. */
+.settings-row:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 var(--lip-ink), inset 0 1px 3px var(--press-tint);
+  background-image: linear-gradient(var(--press-tint), var(--press-tint));
+}
+
+/* The shelf tabs live on the dark header, where a darker lip is invisible.
+   Theirs is the light catching the top edge instead, and pressing puts the
+   tab into the wood. */
+.tab {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: transform 0.09s ease, box-shadow 0.09s ease,
+              background 0.12s, color 0.12s;
+}
+.tab.active {
+  box-shadow: 0 var(--lip) 0 rgba(0, 0, 0, 0.28), var(--shadow-1);
+}
+.tab:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.32);
+}
+.tab.active:active {
+  transform: translateY(var(--lip));
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0.28), inset 0 1px 2px var(--press-tint);
+}
+
+/* The search field is the one control that should look recessed at rest —
+   you type into it, you don't press it. So it gets the lip inverted. */
+.search-wrap {
+  box-shadow: inset 0 1px 2px var(--press-tint);
+}
+.search-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 2px var(--press-tint),
+              0 0 0 3px var(--accent-soft);
+}
+
+/* On a phone the hover state latches after the finger lifts, which is how a
+   tapped chip ends up sitting there looking armed, and how three tapped
+   things end up looking armed at once. Where there's no hover to speak of,
+   neutralise it — and restate the real resting value rather than reverting,
+   because `revert` on a <button> lands on the user-agent's grey, not on ours.
+   Two of these also lifted on hover, which fights the press travel. */
+@media (hover: none) {
+  .tool-btn:hover { border-color: var(--line); }
+  .back-btn:hover,
+  .secondary-btn:hover,
+  .settings-row:hover { border-color: var(--line); }
+  /* :not(.active) so a selected chip keeps the accent wash that says so. */
+  .filter-chip:not(.active):hover { border-color: var(--line); background: var(--card); }
+  .shelf-pick:hover,
+  .method-btn:hover,
+  .theme-card:not(.active):hover { border-color: var(--line); transform: none; }
+  .theme-card:hover { transform: none; }
+  .profile-chip:hover { background: rgba(255, 255, 255, 0.12); }
+  .tab:hover { background: rgba(255, 255, 255, 0.08); color: var(--header-dim); }
+  .tab.active:hover { background: var(--card); color: var(--ink); }
+}
+
+/* Travel is motion. Someone who asked for less of it still gets the tint and
+   the lip collapse, which is what carries the information. */
+@media (prefers-reduced-motion: reduce) {
+  .tool-btn:active, .filter-chip:active, .shelf-pick:active,
+  .primary-btn:active, .secondary-btn:active, .danger-btn:active,
+  .back-btn:active, .close-btn:active, .method-btn:active,
+  .approve-btn:active, .qa-btn:active, .qa-details:active,
+  .qa-remove:active, .theme-card:active, .profile-chip:active,
+  .settings-row:active, .tab:active, .tab.active:active {
+    transform: none;
+  }
 }
