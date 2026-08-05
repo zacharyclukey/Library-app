@@ -49,6 +49,7 @@ unless you pass `--network`. Everything else runs offline.
 | `readmonth.mjs` | The "Read in" month override |
 | `bulkmove.mjs` | Selecting several books and moving them |
 | `socialtest.mjs` | Following, mutual friendship, feed, friend weighting |
+| `rectest.mjs` | Taste, candidate sources, ranking, the sunset sheet |
 | `customtest.mjs` | The "Yours" aesthetic, `assets/` drop-ins, contrast |
 | `polish.mjs` | 300-book performance, A–Z rail, offline, service worker |
 | `toasttest.mjs` | Undo staying visible above an open dialog |

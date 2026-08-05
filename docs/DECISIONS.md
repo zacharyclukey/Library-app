@@ -164,6 +164,70 @@ the same handful of famous books to everyone. Public ratings are now a
 confidence-weighted tiebreaker — a 4.6 from nine readers doesn't outrank a real
 taste match.
 
+### The recommender records what you did, and never sends it anywhere
+
+`js/signals.js` keeps a capped ring buffer of what was shown, taken and waved
+off — including the feature vector that ranked each book.
+
+*Why:* without it the feature could only improve as the library grew, and no
+change to the ranking could be shown to be an improvement rather than a
+different opinion. Storing the *features* rather than just the outcome is the
+part that matters: an outcome says someone declined, the vector says what the
+ranker believed when they did.
+
+*Why local-only:* it is a record of hesitation as much as preference, and none
+of it is anyone else's business. Nothing in the log is published, synced, or
+attached to a household — unlike ratings and reviews, which are opt-in and
+explicitly shared.
+
+*Cost:* another key in a store that already has a full-disk path. Capped,
+halved on a quota error, and rebuildable-by-doing-nothing, so the worst case is
+a slightly duller ranking.
+
+### The sunset sheet hangs off "did we watch you read it"
+
+Finishing a book offers a rating and a next pick. Marking an owned book
+Finished offers nothing.
+
+*Why:* the same distinction the reading-year stat draws — a book that was on To
+Read or flagged as reading is reading; anything else is cataloguing. Bulk
+backfilling forty books you read years ago must not be interrupted forty times
+by a sheet asking how each of them was.
+
+*Cost:* the same one the stat has. Finishing an owned book you never queued
+gets no sheet, which is also exactly what backfill looks like, so the two can't
+be told apart.
+
+*And it stands down for a few minutes after it appears.* Finishing one book is
+a moment; finishing four in as many minutes is someone marking off a stack, and
+four sheets would be four interruptions rather than one gift.
+
+*The one uninvited modal in the app.* Everything else that opens on top of the
+shelf is a flow you started — add, confirm, details. This one arrives on its
+own, which cost something to get right: a modal `<dialog>` makes the rest of
+the document inert, so the "Moved to Finished — Undo" raised a moment earlier
+sat there looking pressable and refusing to be pressed. The toast region now
+travels into the sheet when it opens and back out when it closes. `toast()`
+already solved this from the other direction — a toast raised while a dialog is
+open — which is how the trap was recognised.
+
+### A one-star author is excluded, not ranked low
+
+*Why:* a penalty term still leaves the book on the list, just further down —
+which is not what a one-star rating means. Taste queries never ask for those
+authors, but a genre search still turns them up, so they're filtered out.
+
+*Exempt:* books already on your own shelves. You chose those, and the app
+second-guessing a choice you made is worse than a bad recommendation.
+
+### Discover filters on four axes, not the shelf's nine
+
+*Why:* no free catalogue rates spice or audience — `filters.js` is explicit
+that its own content guesses are suggestions, not verdicts. A spice filter in
+Discover could only drop every book outside your library, or show untagged
+books as if they qualified. Both mislead. Mood dials bend the ranking instead,
+which can't empty a list or claim something it doesn't know.
+
 ### Nothing is ever a backlog
 
 No "14 books need rating" counter exists anywhere. At most one unrated finished

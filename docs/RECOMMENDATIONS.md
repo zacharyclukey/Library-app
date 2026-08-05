@@ -4,6 +4,13 @@ Where Discover is now, what's wrong with it, and the ten steps between here and
 the thing we're actually building: **you finish a book, and the app hands you
 the next one.**
 
+> **Status.** Phases 1–6 and 9 are built and covered by `tests/rectest.mjs`.
+> Phase 7 (the nightly batch model), Phase 8 (book identity) and Phase 10's
+> learned re-ranker beyond its default weights are not. The faults listed under
+> *What's wrong* are the review that produced this plan; the ones now fixed are
+> marked ✅ where they appear. Line references in those entries point at the
+> code as it was — the engine has since moved into its own modules.
+
 Written after a full read of `js/app.js`, `js/community.js`, `js/social.js`,
 `js/filters.js` and `js/api.js`. Every claim below has a file and a line behind
 it. The reasoning style is [DECISIONS.md](DECISIONS.md)'s — where a choice has
@@ -46,7 +53,7 @@ missing, plus the moment it was always for.
 
 ## What's wrong
 
-**1. Nothing you disliked counts.** `js/app.js:2489`:
+**1. Nothing you disliked counts.** ✅ *Fixed — js/taste.js.* `js/app.js:2489`:
 
 ```js
 const engagement = (myRating(b) ?? 0) >= 4 ? 3 : b.shelf === "wishlist" ? 2 : 1;
@@ -57,7 +64,7 @@ and it weighs *positively*. Every book you hated is currently pulling your
 taste profile toward its author and its subjects. The strongest opinion a
 reader ever expresses is the one signal we throw away.
 
-**2. Your taste is built from your ten oldest books.** `js/app.js:2504`:
+**2. Your taste is built from your ten oldest books.** ✅ *Fixed — js/taste.js.* `js/app.js:2504`:
 
 ```js
 const withWorks = pool.filter((b) => b.workKey).slice(0, 10);
@@ -74,7 +81,7 @@ nine axes — spice, audience, language, series, format, status, rating — and 
 shelf screen uses all of them. The goal is "exactly what they're looking for"
 and two thirds of the vocabulary we already own isn't offered.
 
-**4. It's slow, and the cache doesn't help.** `js/app.js:2418`:
+**4. It's slow, and the cache doesn't help.** ✅ *Fixed — the cache is now keyed on the taste fingerprint, and the two offline sources answer with no network at all.* `js/app.js:2418`:
 
 ```js
 let recsCache = null; // key: JSON.stringify(recFilter) + ":" + books.length
@@ -85,14 +92,14 @@ books invalidates nothing. A cold open is ~13 Open Library searches through a
 queue with a 220 ms floor between them (`js/api.js:295`) plus up to 30 work
 fetches. Seconds. A sunset moment cannot cost seconds.
 
-**5. Friends can boost a book but never introduce one.** Candidates come only
+**5. Friends can boost a book but never introduce one.** ✅ *Fixed — js/candidates.js.* Candidates come only
 from Open Library searches built out of your own authors and subjects
 (`js/app.js:2534`). `socialScores` and `coReadScores` are then consulted as
 lookup tables. A book your closest friend loved is invisible unless one of your
 own taste queries happened to return it. The signal the whole feature claims to
 lead with is wired as a tiebreaker.
 
-**6. A household shares one blurred taste.** `buildRecommendations` reads
+**6. A household shares one blurred taste.** ✅ *Fixed — taste is per profile.* `buildRecommendations` reads
 `db.getAllBooks()` with no profile scoping (`js/app.js:2609`), even though
 ratings, To Read and Wishlist are all per-person.
 
@@ -114,12 +121,12 @@ resolves Open Library work → ISBN-13 → title slug. Two people who added the
 same book different ways produce two keys, and their ratings never pool. Every
 cross-user signal in the app is quietly diluted by this.
 
-**10. It cannot improve with usage, only with library size.** Nothing anywhere
+**10. It cannot improve with usage, only with library size.** ✅ *Fixed — js/signals.js.* Nothing anywhere
 records that a recommendation was shown, taken, or ignored. There is no
 feedback loop, so "gets smarter over time" is currently untrue — and there is
 no way to tell whether a change to the ranking made it better or worse.
 
-**11. A new user gets nothing.** Under two books, Discover says come back later
+**11. A new user gets nothing.** ✅ *Fixed — your own shelves are a source.* Under two books, Discover says come back later
 (`js/app.js:2450`) — at the moment someone is most curious about what this app
 is for.
 
@@ -384,6 +391,76 @@ Without this, every phase above is an opinion.
 - **The guardrail** — no ranking change lands if it lowers replay precision@3.
 
 ---
+
+## What shipped, and where it differs from the plan
+
+Phases 1–6 and 9 are in. The engine is four modules and `app.js` gained wiring,
+as intended:
+
+```
+js/signals.js     the event log — every book shown, with the vector that ranked it
+js/taste.js       signed, decayed, per-profile; rebuilt rather than accumulated
+js/candidates.js  five sources, two of which need no network
+js/rank.js        named features, linear score, diversity, the "why" line
+```
+
+`tests/rectest.mjs` asserts the claims rather than printing them: a one-star
+author does not come back, a dismissal survives a revisit, a mutual friend's
+five outranks a stranger's 4.8 from nine thousand readers, finishing a book you
+were reading opens the sheet and cataloguing one does not, and with Open
+Library unreachable there is still a pick with a real reason.
+
+Two things the suites caught that no amount of reading would have:
+
+**The sheet is the app's only uninvited modal, and a modal makes the rest of
+the document inert.** The "Moved to Finished — Undo" raised a moment before the
+sheet opened was visible and unpressable. `toast()` already handled the mirror
+case — a toast raised while a dialog is open — so the fix is the same move in
+the other direction: the toast region travels into the sheet and back out
+again. Two of the repo's own suites failed on this before a person would have.
+
+**Finishing four books in four minutes is not four moments.** The sheet stands
+down for three minutes after it appears, so marking off a stack gives one sheet
+rather than a queue of them.
+
+Three deliberate departures:
+
+**Taste is rebuilt, not accumulated.** The plan implied an object updated in
+place per event. An accumulator drifts — rerate a book 5→2 and its old
+contribution has to be unwound, and one missed unwind is permanent — so it is
+recomputed against a fingerprint of the shelves instead. The expensive input,
+work subjects, is cached for a month by `js/api.js` and topped up twelve at a
+time, so a large library sharpens over a few sessions rather than blocking on
+the first.
+
+**Finding #3 is only half-fixed, on purpose.** Discover gained the series axis
+and the mood dials, not spice, audience or language. No free catalogue rates
+spice or audience — `filters.js` says as much about its own guesses — so those
+controls could only either drop every book outside your library or show
+untagged books as though they qualified. Both are lies. `candidates.js` names
+the four axes it will honestly filter on and says why the others are absent.
+They become offerable when community tags accumulate, which is the same route
+the pace and weight dials take.
+
+**A one-star author is excluded, not merely ranked low.** The plan treated
+dislike as a penalty term. It is that, but a book by an author you rated one
+star also never reaches the list — the test caught it sitting at position five,
+which is not what "I didn't like this" means. Books already on your own shelves
+are exempt, because you chose those.
+
+One thing the plan didn't call for and the code now does: **putting down a book
+you were reading counts as abandoning it.** There is no DNF shelf and adding
+one would be a chore, but moving a book flagged *reading* to anywhere other
+than Finished is an honest "I gave up" that costs the reader nothing to give.
+It weighs as a real negative, so a book abandoned halfway pushes its subjects
+away instead of counting as a mild endorsement for having been on the shelf.
+
+Not built: the nightly batch model (Phase 7), the identity fix (Phase 8), and
+the learned re-ranker's actual influence (Phase 10). The learner is written,
+gated at 40 outcomes, capped at α = 0.6 and under test — but nobody has 40
+outcomes yet, so in practice every ranking today uses the hand-tuned defaults.
+Phase 7 stays the next thing that matters: the client-side scan of every reader
+degrades precisely as the feature succeeds.
 
 ## Order, and why this order
 

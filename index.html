@@ -302,6 +302,18 @@
     </div>
   </dialog>
 
+  <!-- ============ Sunset: you just finished a book ============ -->
+  <!-- Offered once, at the moment a book is finished, and never again for that
+       book. No badge, no counter, nothing that accumulates — see
+       docs/RECOMMENDATIONS.md and the "nothing is ever a backlog" rule. -->
+  <dialog id="sunset-modal" class="modal sheet">
+    <div class="modal-header">
+      <h2><span data-ico="check"></span> Finished</h2>
+      <button class="close-btn" data-close="sunset-modal" aria-label="Close" data-ico="close"></button>
+    </div>
+    <div id="sunset-content"></div>
+  </dialog>
+
   <!-- ============ Book detail modal ============ -->
   <dialog id="detail-modal" class="modal sheet">
     <div class="modal-header">

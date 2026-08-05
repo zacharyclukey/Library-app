@@ -6,6 +6,10 @@ import * as xport from "./export.js";
 import * as themes from "./themes.js";
 import * as community from "./community.js";
 import * as social from "./social.js";
+import * as signals from "./signals.js";
+import * as taste from "./taste.js";
+import * as cand from "./candidates.js";
+import * as rank from "./rank.js";
 import { icon, loadIconOverrides, refreshIconOverrides } from "./icons.js";
 import { scanImageFile, startLiveScan, stopLiveScan } from "./scanner.js";
 import { applyCustomAssets, refreshCustomAssets } from "./assets.js";
@@ -281,6 +285,24 @@ function readHerePatch(book, toShelf) {
     : {};
 }
 
+// Did the app just watch someone finish a book, as against watch them
+// catalogue one? The sunset sheet hangs off exactly this: the same test the
+// reading-year stat uses, so a bulk backfill of books read years ago is never
+// interrupted by a sheet asking how each of them was.
+function justFinished(book, toShelf) {
+  return toShelf === "completed" && book.shelf !== "completed" && countsAsReadHere(book);
+}
+
+// Putting down a book you were actually reading, without finishing it. The one
+// honest "I gave up" signal the app can read without asking — there is no DNF
+// shelf and adding one would be a chore. Weighed as a real negative by
+// js/taste.js, so a book abandoned halfway pushes its subjects away rather
+// than counting as a mild endorsement for having been on the shelf.
+function noteIfAbandoned(book, toShelf) {
+  if (!book.reading || toShelf === "completed" || toShelf === book.shelf) return;
+  signals.log("abandoned", { key: community.bookKey(book), profile: currentProfile() });
+}
+
 function renderStatsScreen() {
   const el = $("#stats-content");
   const all = db.getAllBooks();
@@ -442,6 +464,10 @@ function undoable(message, book, apply) {
       db.replaceBook(before); // replace, not merge: undo must remove new keys too
       seriesCache.delete(before.id);
       shareToCommunity(before.id);
+      // Taking back the move that opened the sunset sheet has to take back the
+      // sheet too — otherwise it sits there asking how a book you haven't
+      // finished was, and a star tapped into it would rate an unread book.
+      if (sunsetModal?.open) sunsetModal.close();
       renderShelf();
       toast("Undone");
     },
@@ -1805,6 +1831,8 @@ bookList.addEventListener("click", (e) => {
     });
     flippedIds.delete(id);
     renderShelf();
+    noteIfAbandoned(b, to);
+    if (justFinished(b, to)) offerSunset(b);
     return;
   }
   if (e.target.closest("[data-qa-remove]")) {
@@ -2154,6 +2182,8 @@ async function openDetail(id) {
       social.publishSoon(currentProfile());
       detailModal.close();
       renderShelf();
+      noteIfAbandoned(b, to);
+      if (justFinished(b, to)) offerSunset(b);
     })
   );
   $("#save-review-btn")?.addEventListener("click", () => {
@@ -2413,21 +2443,66 @@ async function renderSeriesSection(book) {
 }
 
 // ---------- discover (recommendations) ----------
+//
+// The engine lives in four modules now — js/taste.js (who this reader is),
+// js/candidates.js (where books come from), js/rank.js (how they're scored),
+// js/signals.js (what the reader did about it). What's left here is the
+// screen: filters, cards, and the wiring that turns a tap into a signal.
 
-let recFilter = { genre: null, pages: null, age: null };
-let recsCache = null; // { key, recs } — keyed on filters + library size
+let recFilter = { genre: null, pages: null, age: null, series: null };
+let recMood = { weight: null, pace: null, length: null, familiarity: null };
+// Keyed on the taste fingerprint rather than the library's length, so rating
+// a book actually invalidates it — the old key could not see a rating change.
+let recsCache = null; // { key, recs, ctx }
 
 $("#discover-btn").addEventListener("click", () => showScreen("discover"));
+
+function moodActive(m = recMood) {
+  return !!m && Object.values(m).some(Boolean);
+}
+
+const MOOD_DIALS = [
+  ["familiarity", "Familiarity", [["similar", "More like that"], ["different", "Something different"]]],
+  ["weight", "Weight", [["light", "Light"], ["involving", "Involving"]]],
+  ["pace", "Pace", [["slow", "Slow burn"], ["fast", "Fast"]]],
+  ["length", "Time", [["evening", "An evening"], ["project", "A project"]]],
+];
+
+// Mood bends the ranking rather than filtering the list: asking for something
+// lighter should reorder what's on offer, never empty the screen.
+function moodDials(mood, onChange) {
+  const box = document.createElement("div");
+  box.className = "rec-mood";
+  box.innerHTML = `<span class="filter-label">In the mood for</span>`;
+  const row = document.createElement("div");
+  row.className = "profile-filter";
+  MOOD_DIALS.forEach(([key, , options]) => {
+    options.forEach(([value, text]) => {
+      const btn = document.createElement("button");
+      btn.className = "filter-chip" + (mood[key] === value ? " active" : "");
+      btn.innerHTML = `<span>${esc(text)}</span>`;
+      btn.addEventListener("click", () => {
+        mood[key] = mood[key] === value ? null : value;
+        signals.log("dial", { profile: currentProfile(), value: `${key}:${mood[key] ?? "off"}` });
+        onChange();
+      });
+      row.appendChild(btn);
+    });
+  });
+  box.appendChild(row);
+  return box;
+}
 
 function renderDiscover() {
   const el = $("#discover-content");
   el.innerHTML = "";
 
+  const results = document.createElement("div");
+  const rerank = () => loadRecs(results);
   const set = (key) => (value) => {
     recFilter[key] = value;
     renderDiscover();
   };
-  const results = document.createElement("div");
   const filterBox = document.createElement("div");
   filterBox.className = "rec-filters";
   filterBox.appendChild(
@@ -2436,10 +2511,14 @@ function renderDiscover() {
   filterBox.appendChild(
     pageRangeSlider(recFilter.pages, (range) => {
       recFilter.pages = flt.isFullPageRange(range) ? null : range;
-      loadRecs(results);
+      rerank();
     })
   );
   filterBox.appendChild(chipGroup("Published", flt.AGE_OPTIONS, recFilter.age, set("age")));
+  filterBox.appendChild(chipGroup("Series", flt.SERIES_OPTIONS, recFilter.series, set("series")));
+  // Re-ranking on a mood change is instant: it reuses the candidates already
+  // fetched and only re-scores them.
+  filterBox.appendChild(moodDials(recMood, () => renderDiscover()));
   el.appendChild(filterBox);
   el.appendChild(results);
   loadRecs(results);
@@ -2447,231 +2526,138 @@ function renderDiscover() {
 
 async function loadRecs(container) {
   const books = db.getAllBooks();
-  if (books.length < 2) {
-    container.innerHTML = `<p class="muted">Add a few books first — recommendations are
-      based on the authors and genres on your shelves.</p>`;
-    return;
-  }
-  const key = JSON.stringify(recFilter) + ":" + books.length;
+  const profile = currentProfile();
+  const key = JSON.stringify([recFilter, recMood, taste.fingerprint(books, profile)]);
   if (recsCache?.key === key) {
     renderRecs(container, recsCache.recs);
+    return;
+  }
+  // Mood and filters can be re-scored from candidates we already have, with no
+  // network at all — which is what makes turning a dial feel instant.
+  if (recsCache?.pool && recsCache.books === books.length && recsCache.profile === profile) {
+    const recs = rescore(recsCache.pool, recsCache.ctx, recFilter, recMood, profile);
+    recsCache = { ...recsCache, key, recs };
+    renderRecs(container, recs);
     return;
   }
   container.innerHTML = `<p class="series-loading">Reading your shelves and finding
     well-rated books you don't have yet…</p>`;
   try {
-    const recs = await buildRecommendations(books, recFilter);
-    recsCache = { key, recs };
+    const { recs, pool, ctx } = await buildRecommendations(books, recFilter, recMood);
+    recsCache = { key, recs, pool, ctx, books: books.length, profile };
     renderRecs(container, recs);
   } catch (err) {
     container.innerHTML = `<p class="sync-error">Couldn't fetch recommendations (${esc(err.message)}). Try again in a bit.</p>`;
   }
 }
 
-// Taste signals: authors weighted by how much you engaged (high personal
-// rating > wishlisted > merely owned), plus common subjects across your
-// works and the genres already on your shelves. When Discover filters are
-// active, shelf books matching them drive the profile (3x weight) and the
-// rest of the library is context; candidates are constrained to match.
+// Re-score an existing candidate pool against the current filters and mood.
+// No network, so a dial turn or a filter change is immediate.
 //
-// Breadth matters here: Open Library's rating data is thin, so demanding
-// well-rated candidates used to collapse the whole pool down to a couple of
-// heavily-rated series. Instead this casts a wide net and scores afterwards,
-// capping how many books any one author or series can contribute.
-async function buildRecommendations(books, f) {
-  const focusFilter = { ...emptyFilter(), genre: f.genre, pages: f.pages, age: f.age };
-  const anyFilter = !!(f.genre || f.pages || f.age);
-  const inFocus = (b) => flt.matchesFilter(b, focusFilter, { myRating: myRating(b) });
-  const focusBoost = (b) => (anyFilter && inFocus(b) ? 3 : 1);
+// Dismissals are re-applied here and not only at build time: the pool outlives
+// a "not for me", so re-scoring it without this check would quietly bring a
+// dismissed book back on the next visit.
+function rescore(pool, ctx, filter, mood, profile) {
+  const dismissed = signals.dismissedKeys(profile);
+  const rows = cand.applyFilter(pool.filter((r) => !dismissed.has(r.key)), filter);
+  return rank.rank(rows, { ...ctx, mood: moodActive(mood) ? mood : null });
+}
 
-  const authorScore = {};
-  for (const b of books) {
-    const engagement = (myRating(b) ?? 0) >= 4 ? 3 : b.shelf === "wishlist" ? 2 : 1;
-    const w = engagement * focusBoost(b);
-    (b.authors ?? []).forEach((a) => (authorScore[a] = (authorScore[a] ?? 0) + w));
-  }
-  const topAuthors = Object.entries(authorScore)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([a]) => a);
+// Assemble candidates from every source, score them, and hand back the pool as
+// well as the ranked list so filters and mood can be re-applied for free.
+//
+// Two of the five sources need no network, so there is always an answer — the
+// old path had exactly one source and told a reader with two books to come
+// back later.
+async function buildRecommendations(books, f, mood = null) {
+  const profile = currentProfile();
+  const opts = { fetchSubjects: api.fetchWorkSubjects, keyOf: community.bookKey };
+  const whole = await taste.current(books, profile, opts);
 
-  // Mine subjects from filter-matching works first so a Fantasy filter
-  // reads your fantasy shelf, not your whole library.
-  const subjectScore = {};
-  const pool = anyFilter
-    ? [...books.filter(inFocus), ...books.filter((b) => !inFocus(b))]
-    : books;
-  const withWorks = pool.filter((b) => b.workKey).slice(0, 10);
-  await Promise.allSettled(
-    withWorks.map(async (b) => {
-      (await api.fetchWorkSubjects(b.workKey)).forEach(
-        (s) => (subjectScore[s] = (subjectScore[s] ?? 0) + focusBoost(b))
-      );
-    })
-  );
-  const topSubjects = Object.entries(subjectScore)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([s]) => s);
+  // With a filter set, the matching part of your library drives the queries
+  // and the rest stays as context — otherwise a mostly-mystery reader asking
+  // for fantasy gets queries built out of detective subjects, which return
+  // nothing once the genre constraint lands. The stored profile is left whole.
+  const focusFilter = { ...emptyFilter(), genre: f.genre, pages: f.pages, age: f.age, series: f.series };
+  const anyFilter = flt.activeFilterCount(focusFilter) > 0;
+  const focus = anyFilter
+    ? await taste.focusedOn(
+        books,
+        profile,
+        (b) => flt.matchesFilter(b, focusFilter, { myRating: myRating(b) }),
+        opts
+      )
+    : null;
+  const t = focus ? taste.blend(whole, focus) : whole;
 
-  // Genres already on the shelves, as a backstop when subject tags are thin
-  // (books added from search or Discover often have none yet).
-  const genreScore = {};
-  books.forEach((b) =>
-    flt.genresOf(b).forEach((g) => (genreScore[g] = (genreScore[g] ?? 0) + focusBoost(b)))
-  );
-  const topGenres = Object.entries(genreScore)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([g]) => g);
+  // Offline first, and unconditionally: these two can answer on a plane.
+  const shelfRows = cand.fromShelves(books, profile);
 
-  const genreTerm = f.genre ? flt.genreQueryTerm(f.genre) : null;
-  const withGenre = (q) => (genreTerm ? `${q} AND subject:"${genreTerm}"` : q);
-  const clauses = api.yearClause(f.age);
-  // New releases have few ratings, so ranking them by rating buries them.
-  const sort = f.age === "new" ? "new" : "rating";
+  const [seriesRes, friendRes, communityRes, tasteRes] = await Promise.allSettled([
+    cand.fromSeries(books, profile),
+    cand.fromFriends(books, profile),
+    cand.fromCommunity(books, profile),
+    taste.isWarm(t) ? cand.fromTaste(books, t, f) : Promise.resolve({ rows: [], reached: true }),
+  ]);
+  const ok = (res, fallback) => (res.status === "fulfilled" ? res.value : fallback);
+  const seriesRows = ok(seriesRes, []);
+  const friendRows = ok(friendRes, []);
+  const { rows: communityRows, scores: coRead } = ok(communityRes, { rows: [], scores: new Map() });
+  const { rows: tasteRows, reached } = ok(tasteRes, { rows: [], reached: true });
 
-  const queries = [
-    ...topAuthors.map((a) => ({ q: withGenre(`author:"${a}"`), reason: `More by ${a}` })),
-    ...topSubjects
-      .filter((s) => s.toLowerCase() !== genreTerm)
-      .map((s) => ({ q: withGenre(`subject:"${s}"`), reason: s })),
-  ];
-  if (genreTerm) {
-    queries.push({ q: `subject:"${genreTerm}"`, reason: `Top-rated ${f.genre}` });
-  } else {
-    topGenres.forEach((g) =>
-      queries.push({ q: `subject:"${flt.genreQueryTerm(g)}"`, reason: `${g} you might like` })
+  let pool = cand.merge([shelfRows, seriesRows, friendRows, communityRows, tasteRows]);
+
+  // "Not for me" has to mean something the very next time, or it reads as a
+  // control that does nothing.
+  const dismissed = signals.dismissedKeys(profile);
+  pool = pool.filter((r) => !dismissed.has(r.key));
+
+  // An author you rated one star is not a weak match to be ranked low — it is
+  // an answer you already gave. Taste queries never ask for them, but a genre
+  // or subject search will still turn them up, so they are excluded outright.
+  // Books already on your own shelves are exempt: you chose those.
+  const unwanted = new Set(taste.disliked(t.authors));
+  if (unwanted.size) {
+    pool = pool.filter(
+      (r) => r.book || !(r.authors ?? []).some((a) => unwanted.has(a))
     );
   }
 
-  const have = new Set(books.map((b) => normTitle(b.title)));
-  const haveWorks = new Set(books.map((b) => b.workKey).filter(Boolean));
-  const found = new Map();
-  api.resetSearchReachability();
-
-  await Promise.allSettled(
-    queries.map(async ({ q, reason }) => {
-      const rows = await api.searchRankedWithFallback(q, clauses, { limit: 25, sort });
-      for (const r of rows) {
-        if (!flt.pagesMatch(r.pages, f.pages)) continue;
-        if (f.age && !flt.ageMatches(r.year, f.age)) continue;
-        if (haveWorks.has(r.workKey)) continue;
-        if (/box(ed)? set|omnibus|\bbundle\b/i.test(r.title)) continue;
-
-        const key = seriesKey(r.title);
-        if (have.has(normTitle(r.title)) || have.has(key)) continue;
-        const existing = found.get(key);
-        if (existing) {
-          existing.hits++; // corroborated by another query — a better signal
-        } else {
-          found.set(key, { ...r, reason, hits: 1 });
-        }
-      }
-    })
-  );
-
-  // ---- Scoring ----------------------------------------------------------
-  // Style first. Reader ratings used to be the base term, which meant a
-  // popular book could outrank one that genuinely matched your taste; they
-  // are now a modest, confidence-weighted tiebreaker instead.
-  //
-  //   similarity  (0..1, dominant) — how much a book overlaps your taste:
-  //                 shared subjects, author affinity, and how many separate
-  //                 taste queries surfaced it
-  //   coRead      (0..1, additive)  — readers whose shelves resemble yours
-  //                 have this book (needs other users; zero until then)
-  //   quality     (small)           — ratings, scaled by how many people
-  //                 rated it, so a 4.6 from 9 readers doesn't beat a match
-  const candidates = [...found.values()];
-  // Nothing came back and nothing got through: that's an outage, not a
-  // library with no matches. Say the true thing.
-  if (!candidates.length && !api.lastSearchReachedServer()) {
-    throw new Error(
-      navigator.onLine ? "Open Library isn't answering" : "you're offline"
-    );
+  // Nothing came back and Open Library couldn't be reached: that's an outage,
+  // not a library with no matches. Say the true thing — but only when the
+  // offline sources are empty too, since otherwise we do have an answer.
+  if (!pool.length && !reached) {
+    throw new Error(navigator.onLine ? "Open Library isn't answering" : "you're offline");
   }
 
-  // Fetch real subjects for the strongest candidates so overlap is measured,
-  // not assumed. Cached in api.js, so this is cheap after the first run.
-  const preRanked = candidates
-    .sort((a, b) => b.hits - a.hits || (b.avgRating ?? 0) - (a.avgRating ?? 0))
-    .slice(0, 30);
-  await Promise.allSettled(
-    preRanked.map(async (r) => {
-      r.subjects = await api.fetchWorkSubjects(r.workKey);
-    })
+  // Enrich only what's plausibly going to be shown. Subject lookups are cached
+  // for a month in js/api.js, so this is nearly free after the first run.
+  const preRanked = [...pool].sort(
+    (a, b) =>
+      (b.sources?.shelves ?? 0) + (b.sources?.series ?? 0) + (b.sources?.friends ?? 0) -
+        ((a.sources?.shelves ?? 0) + (a.sources?.series ?? 0) + (a.sources?.friends ?? 0)) ||
+      (b.hits ?? 1) - (a.hits ?? 1) ||
+      (b.avgRating ?? 0) - (a.avgRating ?? 0)
   );
-
-  const tasteTotal = Object.values(subjectScore).reduce((a, b) => a + b, 0) || 1;
-  const authorTotal = Object.values(authorScore).reduce((a, b) => a + b, 0) || 1;
-
-  const myKeys = books.map((b) => community.bookKey(b));
-  const [summaries, coRead, friends] = await Promise.all([
-    community.fetchSummaries(candidates.map((r) => community.bookKey(r))),
-    community.coReadScores(myKeys),
-    social.socialScores(myKeys),
+  const [, summaries] = await Promise.all([
+    cand.enrich(preRanked, { limit: 24 }),
+    community.fetchSummaries(preRanked.slice(0, 30).map((r) => r.key)),
   ]);
 
-  for (const r of candidates) {
-    // Subject overlap, weighted by how central each subject is to your taste.
-    const subjHit = (r.subjects ?? []).reduce((sum, s) => sum + (subjectScore[s] ?? 0), 0);
-    const subjectMatch = Math.min(subjHit / tasteTotal, 1);
+  const { weights: learned, alpha } = rank.learnedWeights(profile);
+  const ctx = {
+    taste: t,
+    summaries,
+    coRead,
+    stale: signals.shownRecently(profile),
+    profile,
+    learned,
+    alpha,
+  };
 
-    const authorHit = (r.authors ?? []).reduce((sum, a) => sum + (authorScore[a] ?? 0), 0);
-    const authorMatch = Math.min(authorHit / authorTotal, 1);
-
-    const corroboration = Math.min((r.hits - 1) / 2, 1);
-
-    const similarity = 0.5 * subjectMatch + 0.3 * authorMatch + 0.2 * corroboration;
-
-    // Ratings only speak up when enough people have spoken.
-    const confidence = Math.min((r.ratingsCount ?? 0) / 60, 1);
-    const quality = r.avgRating ? ((r.avgRating - 3.4) / 1.6) * confidence : 0;
-
-    const key = community.bookKey(r);
-    const cr = coRead.get(key);
-    const cs = summaries.get(key);
-    const fr = friends.get(key);
-    const communityRating = cs?.ratingCount
-      ? ((cs.ratingAvg - 3) / 2) * Math.min(cs.ratingCount / 5, 1)
-      : 0;
-
-    // People you actually know outrank every other social signal: a book a
-    // friend loved should surface ahead of one that strangers rate highly.
-    const known = (fr?.score ?? 0) * (fr?.friend ? 1.1 : 0.8);
-
-    r.score =
-      similarity + 1.2 * known + 0.6 * (cr?.score ?? 0) + 0.25 * quality + 0.3 * communityRating;
-
-    // Say why, most specific signal first — and nothing is more specific
-    // than a name you know.
-    if (fr?.who?.length) {
-      const names = fr.who.slice(0, 2).join(" and ");
-      const more = fr.who.length > 2 ? ` +${fr.who.length - 2}` : "";
-      r.reason = `${names}${more} read this`;
-    } else if (cr?.readers) {
-      r.reason = `Readers with shelves like yours have this`;
-    } else if (cs?.ratingCount) {
-      r.reason = `Shelfie readers rate it ★ ${cs.ratingAvg.toFixed(1)}`;
-    } else if (subjectMatch > 0.12 && r.subjects?.length) {
-      const shared = r.subjects.filter((x) => subjectScore[x]).slice(0, 2);
-      if (shared.length) r.reason = `Matches your taste: ${shared.join(", ")}`;
-    }
-  }
-  const scored = candidates.sort((a, b) => b.score - a.score);
-
-  // Keep the list varied: at most two books per author.
-  const perAuthor = {};
-  const out = [];
-  for (const r of scored) {
-    const a = r.authors?.[0] ?? "?";
-    if ((perAuthor[a] ?? 0) >= 2) continue;
-    perAuthor[a] = (perAuthor[a] ?? 0) + 1;
-    out.push(r);
-    if (out.length >= 24) break;
-  }
-  return out;
+  const rows = cand.applyFilter(pool, f);
+  const active = moodActive(mood ?? {}) ? mood : null;
+  return { recs: rank.rank(rows, { ...ctx, mood: active }), pool, ctx };
 }
 
 // Collapse volume/part numbering so a long manga or serial contributes one
@@ -2685,17 +2671,40 @@ function seriesKey(title) {
   );
 }
 
+// Turn a recommendation into a library record. Books that came off your own
+// shelves already are one — the caller must not add a second copy.
+function recToBook(r, shelf) {
+  return {
+    id: r.workKey ? "ol:" + r.workKey.replace("/works/", "") : "rec:" + cand.titleKey(r.title),
+    title: r.title,
+    authors: r.authors ?? [],
+    workKey: r.workKey ?? null,
+    coverUrl: r.coverUrl ?? null,
+    isbn13: null, isbn10: null, publisher: null,
+    publishDate: r.year ? String(r.year) : null,
+    pageCount: r.pages ?? null,
+    format: null, editionKey: null, series: null,
+    subjects: r.subjects ?? [],
+    shelf,
+    owned: false,
+    profile: currentProfile() ?? null,
+  };
+}
+
 function renderRecs(el, recs) {
   if (!recs.length) {
     el.innerHTML = `<p class="muted">Nothing found for these filters — try loosening
       them, or add and rate a few more books.</p>`;
     return;
   }
+  // Every book put in front of the reader is recorded with the feature vector
+  // that ranked it. Outcomes alone say someone declined; the vector says what
+  // the ranker believed when they did, which is the only learnable part.
+  signals.logShown(recs, currentProfile());
+
   const wishTitles = new Set(db.getBooksOnShelf("wishlist").map((b) => normTitle(b.title)));
   el.innerHTML = `
-    <p class="muted" style="font-size:0.8rem">Based on the authors and genres on
-    your shelves${flt.activeFilterCount(recFilter) ? " (weighted toward your filtered books)" : ""},
-    ranked by Open Library reader ratings.</p>
+    <p class="muted" style="font-size:0.8rem">${esc(recsSummaryLine(recs))}</p>
     <ul class="series-list">
       ${recs
         .map((r, i) => {
@@ -2705,36 +2714,330 @@ function renderRecs(el, recs) {
             ${r.coverUrl ? `<img src="${esc(r.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
             <span class="series-title">
               <strong>${esc(r.title)}</strong>${r.year ? ` <small>(${r.year})</small>` : ""}<br />
-              <small>${esc(r.authors.join(", "))}${r.pages ? ` · ${r.pages} pp` : ""}</small><br />
+              <small>${esc((r.authors ?? []).join(", "))}${r.pages ? ` · ${r.pages} pp` : ""}</small><br />
               <small class="card-rating">${r.avgRating ? starString(Math.round(r.avgRating)) : ""}</small>
-              <small class="muted">${esc(r.reason)}</small>
+              <small class="muted">${esc(r.reason ?? "")}</small>
             </span>
-            ${wished
-              ? `<span class="own-flag wished">${icon("gift")}</span>`
-              : `<button class="wish-btn" data-rec-idx="${i}">${icon("plus")}<span>Wishlist</span></button>`}
+            <span class="rec-actions">
+              ${r.book
+                ? `<button class="wish-btn" data-rec-start="${i}">${icon("bookmark")}<span>Read next</span></button>`
+                : wished
+                  ? `<span class="own-flag wished">${icon("gift")}</span>`
+                  : `<button class="wish-btn" data-rec-idx="${i}">${icon("plus")}<span>Wishlist</span></button>`}
+              <button class="rec-dismiss" data-rec-no="${i}" aria-label="Not for me — show me something else">${icon("close")}</button>
+            </span>
           </li>`;
         })
         .join("")}
     </ul>`;
+
   el.querySelectorAll("[data-rec-idx]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const r = recsCache.recs[Number(btn.dataset.recIdx)];
-      db.addBook({
-        id: "ol:" + r.workKey.replace("/works/", ""),
-        title: r.title,
-        authors: r.authors,
-        workKey: r.workKey,
-        coverUrl: r.coverUrl,
-        isbn13: null, isbn10: null, publisher: null,
-        publishDate: r.year ? String(r.year) : null,
-        pageCount: r.pages ?? null,
-        format: null, editionKey: null, series: null,
-        shelf: "wishlist",
-        owned: false,
-        profile: currentProfile() ?? null,
+      db.addBook(recToBook(r, "wishlist"));
+      signals.log("wishlisted", {
+        key: r.key, profile: currentProfile(), source: r.source, reason: r.reason,
       });
       renderShelf();
       renderRecs(el, recsCache.recs); // re-render to show the wishlisted flag
+    })
+  );
+  el.querySelectorAll("[data-rec-start]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const r = recsCache.recs[Number(btn.dataset.recStart)];
+      startReading(r);
+      renderRecs(el, recsCache.recs);
+    })
+  );
+  el.querySelectorAll("[data-rec-no]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const r = recsCache.recs[Number(btn.dataset.recNo)];
+      dismissRec(r);
+      const remaining = recsCache.recs.filter((x) => x !== r);
+      recsCache = { ...recsCache, recs: remaining };
+      renderRecs(el, remaining);
+      toast(`Noted — less like “${r.title}”`, {
+        actionLabel: "Undo",
+        onAction: () => {
+          signals.undismiss(r.key, currentProfile());
+          recsCache = { ...recsCache, recs };
+          renderRecs(el, recs);
+        },
+      });
+    })
+  );
+}
+
+// Named after where the books actually came from, not a fixed sentence — the
+// old line always claimed "the authors and genres on your shelves" even when
+// the list was mostly your own To Read shelf and a friend's five-star reads.
+function recsSummaryLine(recs) {
+  const sources = new Set((recs ?? []).map((r) => r.source));
+  const parts = [];
+  if (sources.has("shelves")) parts.push("your own shelves");
+  if (sources.has("series")) parts.push("series you're partway through");
+  if (sources.has("friends")) parts.push("what your friends rated");
+  if (sources.has("taste") || sources.has("community")) parts.push("the taste on your shelves");
+  const from = parts.length ? parts.join(", ") : "the authors and genres on your shelves";
+  return `From ${from}${moodActive() ? ", tuned to your mood" : ""}.`;
+}
+
+// A dismissal is suppressed for 90 days and nudges the author down in the
+// taste profile — see js/signals.js and js/taste.js.
+function dismissRec(r) {
+  signals.dismiss(r.key, currentProfile(), { source: r.source, reason: r.reason });
+}
+
+// Put a book in front of the reader tonight: onto To Read, flagged reading.
+// A book already on the shelves is moved, never duplicated.
+function startReading(r) {
+  const existing = r.book ?? db.getAllBooks().find((b) => normTitle(b.title) === normTitle(r.title));
+  if (existing) {
+    db.updateBook(existing.id, { shelf: "tbr", reading: true });
+  } else {
+    db.addBook({ ...recToBook(r, "tbr"), reading: true });
+  }
+  signals.log("started", {
+    key: r.key, profile: currentProfile(), source: r.source, reason: r.reason,
+  });
+  social.publishSoon(currentProfile());
+  renderShelf();
+  toast(`Started “${r.title}”`);
+}
+
+// ---------- sunset: you just finished a book ----------
+//
+// The moment the whole recommender is for. A book moves to Finished and, right
+// then — before the memory of it cools — the app asks how it was and offers
+// what to read next.
+//
+// Three rules it inherits from the rest of the app:
+//
+//   * Once per finish, never a backlog. No badge, no counter, no "3 books
+//     waiting". Closing it is free and it never comes back for that book.
+//   * Always an answer. Two of the five candidate sources need no network, so
+//     a phone with no signal still gets a real pick with a real reason.
+//   * Instant. The offline sources paint immediately; the networked ones
+//     upgrade the sheet underneath if they arrive, and are simply absent if
+//     they don't.
+//
+// It is offered only when the app actually watched you read the book — the
+// same test the reading-year stat uses (countsAsReadHere). Logging a shelf of
+// books you read years ago is cataloguing, and cataloguing must not be
+// interrupted by a sheet asking how each one was.
+
+const sunsetModal = $("#sunset-modal");
+let sunsetBook = null;
+let sunsetPicks = [];
+
+// Finishing one book is a moment. Finishing four in as many minutes is a
+// sitting — someone marking off a stack, and a sheet for each would be four
+// interruptions rather than one gift. So the sheet stands down for a few
+// minutes after it has been offered, which is the same instinct as the nudge
+// card's snooze: this app never accumulates things to get through.
+const SUNSET_QUIET_KEY = "shelfie.sunsetShown.v1";
+const SUNSET_QUIET_MS = 3 * 60 * 1000;
+
+function sunsetIsQuiet() {
+  const last = Number(localStorage.getItem(SUNSET_QUIET_KEY) ?? 0);
+  return Date.now() - last < SUNSET_QUIET_MS;
+}
+
+// The move that opens this sheet has already raised "Moved to Finished — Undo".
+// A modal <dialog> makes the rest of the document inert, so that Undo would sit
+// there looking available and refuse to be pressed. toast() solves this for a
+// toast raised while a dialog is already open; this is the same problem from
+// the other direction — a dialog opening on top of an existing toast — so the
+// region moves up with it, and back down when the sheet closes.
+function rehostToast() {
+  const region = $("#toast-region");
+  const host = document.querySelector("dialog[open]") ?? document.body;
+  if (region.parentElement !== host) host.appendChild(region);
+}
+
+sunsetModal.addEventListener("close", () => {
+  const region = $("#toast-region");
+  if (region.parentElement === sunsetModal) document.body.appendChild(region);
+});
+
+function offerSunset(book) {
+  if (!book || sunsetIsQuiet()) return;
+  try {
+    localStorage.setItem(SUNSET_QUIET_KEY, String(Date.now()));
+  } catch { /* full disk — the sheet is not worth failing over */ }
+  sunsetBook = db.getBook(book.id) ?? book;
+  sunsetPicks = [];
+  renderSunset();
+  sunsetModal.showModal();
+  rehostToast();
+  signals.log("finished", {
+    key: community.bookKey(sunsetBook), profile: currentProfile(),
+  });
+  loadSunsetPicks();
+}
+
+// Offline first, so the sheet is never waiting on a network it may not have;
+// then the networked sources, which replace the list if they find better.
+async function loadSunsetPicks() {
+  const forBook = sunsetBook;
+  const books = db.getAllBooks();
+  const profile = currentProfile();
+  const dismissed = signals.dismissedKeys(profile);
+  const finished = new Set([forBook?.id]);
+
+  const near = cand
+    .merge([cand.fromShelves(books, profile)])
+    .filter((r) => !dismissed.has(r.key) && !finished.has(r.book?.id));
+  if (near.length) {
+    const t = taste.stored(profile) ?? { subjects: {}, authors: {}, genres: {} };
+    sunsetPicks = rank.spread(
+      rank.rank(near, { taste: t, mood: moodActive(sunsetMood) ? sunsetMood : null }, { limit: 8 }),
+      3
+    );
+    if (sunsetBook === forBook) renderSunset();
+  }
+
+  try {
+    // The sheet has its own dials. Discover's mood must not leak in — it would
+    // silently demote series continuation on a screen the reader never set.
+    const { recs } = await buildRecommendations(books, {}, sunsetMood);
+    if (sunsetBook !== forBook) return; // finished another book meanwhile
+    const usable = recs.filter((r) => !finished.has(r.book?.id));
+    if (usable.length) {
+      sunsetPicks = rank.spread(usable, 3);
+      renderSunset();
+    }
+  } catch {
+    // No network, or Open Library is down. The offline picks stand — that is
+    // the whole reason they go first.
+  }
+}
+
+let sunsetMood = { weight: null, pace: null, length: null, familiarity: null };
+
+function renderSunset() {
+  const b = sunsetBook;
+  if (!b) return;
+  const el = $("#sunset-content");
+  const mine = myRating(b);
+
+  el.innerHTML = `
+    <p class="sunset-book">How was <strong>${esc(b.title)}</strong>?</p>
+    <div class="sunset-rate ${mine ? "done" : ""}" id="sunset-stars">
+      ${[1, 2, 3, 4, 5]
+        .map((n) => `<button data-sunset-rate="${n}" aria-label="Rate ${n}">${mine >= n ? "★" : "☆"}</button>`)
+        .join("")}
+    </div>
+    <div id="sunset-next"></div>`;
+
+  el.querySelectorAll("[data-sunset-rate]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const value = Number(btn.dataset.sunsetRate);
+      const me = currentProfile() ?? "Me";
+      const fresh = db.getBook(b.id) ?? b;
+      db.updateBook(b.id, { ratings: { ...(fresh.ratings ?? {}), [me]: value }, rating: null });
+      sunsetBook = db.getBook(b.id) ?? fresh;
+      shareToCommunity(b.id);
+      signals.log("rated", { key: community.bookKey(fresh), profile: me, value });
+      navigator.vibrate?.(12);
+      // A rating at this moment changes the taste profile, which changes what
+      // should be offered — so the picks are rebuilt rather than left stale.
+      recsCache = null;
+      renderSunset();
+      renderShelf();
+      loadSunsetPicks();
+    })
+  );
+  renderSunsetNext();
+}
+
+function renderSunsetNext() {
+  const el = $("#sunset-next");
+  if (!el) return;
+  if (!sunsetPicks.length) {
+    el.innerHTML = `<p class="sunset-none">Nothing to suggest just yet — add a few more
+      books, or have a look in Discover.</p>`;
+    return;
+  }
+  signals.logShown(sunsetPicks, currentProfile());
+
+  const [pick, ...alts] = sunsetPicks;
+  el.innerHTML = `
+    <p class="sunset-next-label">Read next</p>
+    <div class="sunset-pick">
+      ${pick.coverUrl ? `<img src="${esc(pick.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
+      <div class="sunset-pick-body">
+        <p class="sunset-pick-title">${esc(pick.title)}</p>
+        <small>${esc((pick.authors ?? []).join(", "))}${pick.pages ? ` · ${pick.pages} pp` : ""}</small>
+        <p class="sunset-why">${esc(pick.reason ?? "")}</p>
+        <div class="sunset-actions">
+          <button class="primary-btn" data-sunset-start="0">${icon("bookmark")}<span>Start reading</span></button>
+          ${pick.book ? "" : `<button class="secondary-btn" data-sunset-wish="0">${icon("gift")}<span>Wishlist</span></button>`}
+          <button class="link-btn" data-sunset-no="0">Not tonight</button>
+        </div>
+      </div>
+    </div>
+    ${alts.length
+      ? `<div class="sunset-alts">
+           <p class="sunset-next-label">Or</p>
+           <ul class="series-list">
+             ${alts
+               .map(
+                 (r, i) => `
+               <li>
+                 ${r.coverUrl ? `<img src="${esc(r.coverUrl)}" alt="" />` : `<span class="cover-ph"></span>`}
+                 <span class="series-title">
+                   <strong>${esc(r.title)}</strong><br />
+                   <small>${esc((r.authors ?? []).join(", "))}</small><br />
+                   <small class="muted">${esc(r.reason ?? "")}</small>
+                 </span>
+                 <span class="rec-actions">
+                   <button class="wish-btn" data-sunset-start="${i + 1}">${icon("bookmark")}<span>Start</span></button>
+                   <button class="rec-dismiss" data-sunset-no="${i + 1}" aria-label="Not tonight">${icon("close")}</button>
+                 </span>
+               </li>`
+               )
+               .join("")}
+           </ul>
+         </div>`
+      : ""}
+    <div class="sunset-dials" id="sunset-dials"></div>`;
+
+  // Turning a dial re-scores what's already loaded — no network, no wait.
+  $("#sunset-dials")?.appendChild(
+    moodDials(sunsetMood, () => {
+      loadSunsetPicks();
+    })
+  );
+
+  el.querySelectorAll("[data-sunset-start]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const r = sunsetPicks[Number(btn.dataset.sunsetStart)];
+      if (!r) return;
+      startReading(r);
+      sunsetModal.close();
+    })
+  );
+  el.querySelector("[data-sunset-wish]")?.addEventListener("click", () => {
+    const r = sunsetPicks[0];
+    if (!r) return;
+    db.addBook(recToBook(r, "wishlist"));
+    signals.log("wishlisted", {
+      key: r.key, profile: currentProfile(), source: r.source, reason: r.reason,
+    });
+    renderShelf();
+    toast(`“${r.title}” is on your wishlist`);
+    sunsetModal.close();
+  });
+  el.querySelectorAll("[data-sunset-no]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const r = sunsetPicks[Number(btn.dataset.sunsetNo)];
+      if (!r) return;
+      dismissRec(r);
+      sunsetPicks = sunsetPicks.filter((x) => x !== r);
+      recsCache = null;
+      renderSunsetNext();
+      if (!sunsetPicks.length) loadSunsetPicks();
     })
   );
 }

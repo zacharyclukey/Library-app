@@ -258,10 +258,16 @@ function saveSubjCache() {
   }, 500);
 }
 
-export async function fetchWorkSubjects(workKey) {
+// `cachedOnly` answers from the month-long cache or not at all. The taste
+// builder (js/taste.js) runs on app open over every book on the shelves, so it
+// asks this way first and tops up only a handful of misses per session —
+// otherwise a 300-book library would fire 300 requests at a rate-limited API
+// the moment someone opened the app.
+export async function fetchWorkSubjects(workKey, { cachedOnly = false } = {}) {
   if (!workKey) return [];
   const cache = loadSubjCache();
   if (cache[workKey]) return cache[workKey].s;
+  if (cachedOnly) return null;
   try {
     const res = await fetch(`${OL}${workKey}.json`);
     if (!res.ok) return [];

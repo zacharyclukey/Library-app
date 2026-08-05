@@ -52,6 +52,16 @@ let s = await stats();
 console.log("   tiles:", s.tiles);
 console.log("   this year:", s.line, "| months with bars:", s.months);
 
+// Finishing a book you were reading now offers the "what next" sheet
+// (js/app.js, offerSunset). It's a moment, not a step in this suite — close it
+// and carry on.
+async function dismissSunset() {
+  if (await page.evaluate(() => document.querySelector("#sunset-modal")?.open === true)) {
+    await page.evaluate(() => document.querySelector("#sunset-modal").close());
+    await page.waitForTimeout(150);
+  }
+}
+
 // Finish the To Read book from its card.
 await page.click('[data-shelf="tbr"]');
 await page.waitForTimeout(400);
@@ -60,7 +70,8 @@ await page.waitForTimeout(400);
 await page.click('.grid-book[data-id="tbr1"] [data-qa-move="completed"]');
 await page.waitForTimeout(500);
 await page.click('.grid-book[data-id="tbr1"] [data-qa-move="completed"]');
-await page.waitForTimeout(700);
+await page.waitForTimeout(1200);
+await dismissSunset();
 console.log("2. after finishing a To Read book:");
 s = await stats();
 console.log("   this year:", s.line, "| months with bars:", s.months);
@@ -71,7 +82,8 @@ await page.waitForTimeout(400);
 await page.click('.grid-book[data-id="rd1"]');
 await page.waitForTimeout(700);
 await page.click('[data-move="completed"]');
-await page.waitForTimeout(700);
+await page.waitForTimeout(1200);
+await dismissSunset();
 console.log("3. after finishing a currently-reading book:");
 s = await stats();
 console.log("   this year:", s.line, "| months with bars:", s.months);

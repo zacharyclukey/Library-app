@@ -84,11 +84,23 @@ All localStorage, all prefixed `shelfie.` and suffixed with a version.
 | `trackContent.v1` · `trackMedium.v1` | Optional features on/off |
 | `persistStorage.v1` | Whether to ask the browser not to evict data |
 | `nudgeSnooze.v1` | When to next offer an unrated book |
+| `signals.v1` | **What you did about recommendations** — see below |
+| `taste.v1` | Derived taste profile per person; rebuilt from the shelves |
+| `rankWeights.v1` | Learned ranking weights, once there's history to learn from |
 | `seriesCache.v1` · `subjectCache.v1` | Lookup caches (1 week / 30 days) |
 | `assets.v1` | What was last found in `assets/`, and when |
 
 Only `library.v1` is irreplaceable. Everything else is preference or
 regenerable cache — useful to know when debugging: clearing the rest is safe.
+
+`signals.v1` is the one worth understanding before you clear it. It is a capped
+ring buffer (400 events) of which books were put in front of you, which you
+took, and which you waved off, each stamped with the feature vector that ranked
+it. It never leaves the device — it is not synced, not published, and not part
+of the household — and the recommender's ability to improve with use comes
+entirely from it. Clearing it is safe and loses the learning, not any books.
+`taste.v1` and `rankWeights.v1` are both derived from it plus the shelves, so
+they regenerate on their own.
 
 ## Cloud (Firestore)
 

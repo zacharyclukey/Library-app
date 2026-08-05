@@ -12,22 +12,26 @@ Pages. `npm` appears only so the test suite can install a headless browser —
 the app itself never touches `node_modules`.
 
 ```
-~8,900 lines total
-  js/app.js         3,685   UI, state, event handling, screen routing
-  css/styles.css    2,232   tokens, five skins × light/dark, layout
-  css/identity.css    279   the motifs that survive every skin
-  js/sync.js          504   Firebase household sync, membership, join approval
-  js/api.js           472   Open Library / Google Books, series detection
-  index.html          300   every screen and dialog, statically declared
+~11,600 lines total
+  js/app.js         4,207   UI, state, event handling, screen routing
+  css/styles.css    2,340   tokens, five skins × light/dark, layout
+  js/sync.js          633   Firebase household sync, membership, join approval
+  js/api.js           511   Open Library / Google Books, series detection
+  js/candidates.js    408   where a recommendation can come from (five sources)
+  js/rank.js          361   feature vector, weights, diversity, explanations
+  css/identity.css    332   the motifs that survive every skin
+  index.html          323   every screen and dialog, statically declared
+  js/taste.js         282   one reader's signed, decayed taste profile
   js/social.js        279   following, friends, activity feed
-  js/filters.js       244   genre map, filter predicates, sort orders
+  js/signals.js       276   what the reader did — the feedback loop
+  js/filters.js       247   genre map, filter predicates, sort orders
   js/community.js     243   shared ratings/tags/reviews, co-read scoring
   js/db.js            236   localStorage store + schema repair
   js/export.js        214   printable HTML, text, CSV, JSON
+  js/icons.js         206   inline SVG icon set
   js/scanner.js       141   BarcodeDetector + ZXing fallback
   js/assets.js        139   optional artwork discovery
   js/themes.js        112   skin registry, light/dark resolution
-  js/icons.js          56   inline SVG icon set
 ```
 
 `js/app.js` is large and knowingly so — see DECISIONS.
@@ -49,6 +53,22 @@ the app itself never touches `node_modules`.
    │store │ │Library │ │household │  └─ social.js
    └──────┘ └────────┘ └──────────┘
 ```
+
+The recommender hangs off the same three, as a pipeline rather than a tree:
+
+```
+   signals.js ──► taste.js ──► candidates.js ──► rank.js ──► app.js
+   what you        who you       five sources      score,      Discover,
+   did about it    are           of books          spread,     and the
+        ▲                                          explain     sunset sheet
+        └──────────────── every outcome feeds back ─────────────────┘
+```
+
+Each stage is a plain module with no state beyond one localStorage key, so any
+of them can be exercised in isolation — which is what `tests/rectest.mjs` does
+for the ranking arithmetic. The loop back from `app.js` to `signals.js` is the
+part that makes the feature improve with use; see
+[RECOMMENDATIONS.md](RECOMMENDATIONS.md).
 
 Rules that hold throughout:
 

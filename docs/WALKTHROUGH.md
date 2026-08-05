@@ -57,7 +57,7 @@ always your actual queue.
 | Screen | What it's for |
 |---|---|
 | **Shelves** | Your books. Search, sort, filter, select several at once |
-| **Discover** | Book suggestions built from what's already on your shelves |
+| **Discover** | Book suggestions built from your shelves, your friends, and series you're partway through |
 | **＋** | Add a book — scan, photograph, or search |
 | **Export** | Save or print a shelf; back up everything |
 | **Settings** | Look and feel, profiles, sharing, friends, your reading stats |

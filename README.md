@@ -84,16 +84,32 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   genre (derived from Open Library subject tags), length (a dual-thumb
   page-count slider), series vs standalone, publication age, format, and
   rating status.
-- **Discover** ✨ — free recommendations built from your shelves, scored on
-  **style first**: how much a book's subjects overlap your taste, author
-  affinity, and corroboration across several taste signals. Reader ratings are a
-  confidence-weighted tiebreaker (a 4.6 from nine readers won't outrank a real
-  match), and each card says *why* it's there. One-tap wishlisting. As the
-  community grows, books held by readers whose shelves resemble yours get a
-  boost too — see `coReadScores` in `js/community.js`.
-  Discover takes the same genre, page-range, and age filters — when set, your
-  shelf books matching them drive the taste profile (with the rest of the
-  library as context) and results are constrained to match.
+- **What next?** 📖 — finish a book and the app asks how it was, then offers
+  the next one: **one pick, cover-forward, with the reason in plain English**
+  (*"More of Court — you gave Court of Thorns five stars"*, *"Kelsey rated it
+  ★★★★★"*), two deliberately different alternates, and mood dials that re-rank
+  instantly. **Start reading**, **Wishlist**, or **Not tonight** — and all three
+  teach it. Two of the five candidate sources need no network, so there is
+  always an answer, offline, even on a shelf of three books. Offered once per
+  finish, never a badge, and never when you're merely cataloguing a book you
+  read years ago.
+- **Discover** ✨ — the same engine as a browsing screen. Recommendations come
+  from **five sources**, not one: your own To Read and Wishlist, the next book
+  in a series you rated well, what friends finished and rated, readers whose
+  shelves resemble yours, and Open Library searches built from your taste.
+  Scoring is **style first** — subject overlap, author affinity, corroboration —
+  with reader ratings as a confidence-weighted tiebreaker, so a 4.6 from nine
+  readers won't outrank a real match. Every card says why it's there, and the
+  reason is checked against the book rather than asserted from the query that
+  found it.
+- **It learns, and it's private about it** 🧠 — your taste profile is **signed**
+  (a book you rated one star pushes its author *down*; that author stops being
+  recommended entirely), **decayed** (a six-month half-life, so this year's
+  reading outweighs a phase you grew out of), and **per profile**. "Not for me"
+  suppresses a book for 90 days. What you were shown and what you did about it
+  is recorded on the device — capped, never synced, never published, never shown
+  to you as a chore — and is what lets the ranking improve with use rather than
+  just with library size. See [`docs/RECOMMENDATIONS.md`](docs/RECOMMENDATIONS.md).
 - **Series awareness** — each owned book is checked against Open Library and Google
   Books series data. Cards show a `📚 N more in series` badge when the series has
   books you don't own, and the detail view lists every book in the series marked
