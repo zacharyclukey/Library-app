@@ -44,13 +44,20 @@ service cloud.firestore {
     // makes it safe to keep one identity across your phone, your browser and
     // any new device.
     match /users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId
-                         && (request.method == 'delete' || reasonableSize());
+      // Only the owner, and only ever their own document. Deletes are listed
+      // apart from create/update for the same reason as above: there is no
+      // incoming document to measure, so a rule naming reasonableSize() on a
+      // delete would evaluate to false and refuse it.
+      function mine() { return signedIn() && request.auth.uid == userId; }
+
+      allow read: if mine();
+      allow create, update: if mine() && reasonableSize();
+      allow delete: if mine();
 
       match /books/{book} {
-        allow read, delete: if signedIn() && request.auth.uid == userId;
-        allow create, update: if signedIn() && request.auth.uid == userId
-                              && reasonableSize();
+        allow read: if mine();
+        allow create, update: if mine() && reasonableSize();
+        allow delete: if mine();
       }
     }
 
