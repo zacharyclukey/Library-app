@@ -164,6 +164,30 @@ if (await shelfOf("p2", "Kelsey") !== "tbr") {
   problems.push("wishlisting took the book off the other person's To Read");
 }
 
+// ---------- 7. an export says what YOU did with the book ----------
+// The CSV reads b.shelf straight off the record unless it's told whose view
+// to take, which would hand you a spreadsheet calling a book you finished
+// "tbr" — the household's leftover answer, not yours.
+await page.click("#export-btn");
+await page.waitForTimeout(400);
+await page.click('[data-scope="all"]');
+await page.waitForTimeout(300);
+const dl = page.waitForEvent("download");
+await page.click('[data-format="csv"]');
+const csv = (await import("node:fs")).readFileSync(await (await dl).path(), "utf8");
+const rows = Object.fromEntries(
+  csv.split("\n").slice(1).filter(Boolean).map((r) => [r.split(",")[0], r.split(",")])
+);
+const shelfCol = csv.split("\n")[0].split(",").indexOf("Shelf");
+console.log("10. CSV shelf for Piranesi (Zach finished it):", rows.Piranesi?.[shelfCol]);
+if (rows.Piranesi?.[shelfCol] !== "completed") {
+  problems.push(`CSV says Piranesi is "${rows.Piranesi?.[shelfCol]}" for Zach, expected completed`);
+}
+console.log("11. CSV shelf for Circe (Zach wishlisted it):", rows.Circe?.[shelfCol]);
+if (rows.Circe?.[shelfCol] !== "wishlist") {
+  problems.push(`CSV says Circe is "${rows.Circe?.[shelfCol]}" for Zach, expected wishlist`);
+}
+
 await browser.close();
 if (problems.length) console.log("\nPROBLEMS:\n- " + problems.join("\n- "));
 console.log("\nERRORS:", errors.length || problems.length ? [...errors, ...problems] : "none");
