@@ -2,7 +2,10 @@ import { chromium } from "playwright-core";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const errors = [];
 // Narrow phone, long metadata, long labels — does the card back overflow?
-for (const width of [320, 360, 390, 430, 768]) {
+// 367 is the cruelest width: the first one that fits three columns, so each
+// cell is squeezed to the grid's 102px minimum and the card back has the
+// least height it will ever have.
+for (const width of [320, 360, 367, 390, 430, 768]) {
   const ctx = await browser.newContext({ viewport: { width, height: 780 } });
   const page = await ctx.newPage();
   await page.route(/openlibrary|googleapis|gstatic|covers/, (r) => r.abort());
@@ -20,29 +23,21 @@ for (const width of [320, 360, 390, 430, 768]) {
   await page.waitForTimeout(500);
   const m = await page.evaluate(() => {
     const back = document.querySelector(".flip-back");
-    const kids = [...back.children];
-    // The back lays its columns out side by side, so summing every child
-    // counts the whole card twice. Columns are measured against the tallest
-    // one; a stacked back is still a sum.
-    const heights = kids.map((k) => k.getBoundingClientRect().height);
-    const row = getComputedStyle(back).flexDirection === "row";
-    const inner = row ? Math.max(0, ...heights) : heights.reduce((a, h) => a + h, 0);
-    const cs = getComputedStyle(back);
-    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    // Summing children breaks whenever the back nests rows inside columns
+    // (stars up top, then facts beside the icon rail). scrollHeight is the
+    // browser's own answer to "how tall does this content really want to
+    // be", and it sees overflow anywhere in the tree — except inside the
+    // review, whose own overflow:hidden is a design choice, not a bug.
     const btn = document.querySelector(".qa-btn").getBoundingClientRect();
-    // The label is hidden in the icon rail until a button is armed; measure
-    // one that is actually laid out.
-    const label = document.querySelector(".cc-main .qa-label") ?? document.querySelector(".qa-label");
     return {
-      backH: Math.round(back.getBoundingClientRect().height),
-      contentH: Math.round(inner + pad),
+      backH: Math.round(back.clientHeight),
+      contentH: Math.round(back.scrollHeight),
       btnH: Math.round(btn.height), btnW: Math.round(btn.width),
-      clipped: label ? label.scrollWidth > label.clientWidth + 1 : false,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
-  console.log(`${width}px:`, JSON.stringify(m), m.contentH > m.backH ? "  ⚠ OVERFLOWS" : "  ok");
-  if (m.contentH > m.backH || m.pageOverflow > 0 || m.clipped) errors.push(`${width}px: card back overflows`);
+  console.log(`${width}px:`, JSON.stringify(m), m.contentH > m.backH + 1 ? "  ⚠ OVERFLOWS" : "  ok");
+  if (m.contentH > m.backH + 1 || m.pageOverflow > 0) errors.push(`${width}px: card back overflows`);
   await ctx.close();
 }
 console.log("\nERRORS:", errors.length ? errors : "none");

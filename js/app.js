@@ -871,25 +871,28 @@ function removeBookEverywhere(b) {
   });
 }
 
-// The facts line on a turned card. Cutting it with an ellipsis mid-word
-// ("A SERIE…") loses the one part that's actually useful — which book in the
-// series this is — and reads as the app failing rather than as a choice. So
-// it steps down through shorter forms until one fits: the whole thing, then
-// the series number without its name, then no series at all. Two lines of
-// wrapping absorb the rest.
-function factsLine(b) {
-  const year = b.publishDate ? String(b.publishDate).match(/\d{4}/)?.[0] : null;
-  const pages = b.pageCount ? `${b.pageCount}pp` : null;
+// The facts on a turned card: which series it belongs to (and where in it),
+// and how long the book is — the two things you'd flip a card to check. The
+// title and author aren't repeated back here; they're already printed under
+// the book on the shelf itself. Cutting a series name with an ellipsis
+// mid-word ("A SERIE…") loses the useful part, so a name too long for the
+// card's narrow column steps down to just the number — the full name is one
+// tap away in Details.
+function factLines(b) {
+  const pages = b.pageCount ? `${b.pageCount} pages` : null;
   const name = b.series?.name ?? null;
   const pos = b.series?.position != null ? `#${b.series.position}` : null;
-  const join = (...parts) => parts.filter(Boolean).join(" · ");
-
-  const full = join(year, pages, name && [name, pos].filter(Boolean).join(" "));
-  if (full.length <= 38) return full;
-  // The number alone still tells you where you are; the name is on the front.
-  const trimmed = join(year, pages, pos);
-  if (trimmed.length <= 38) return trimmed;
-  return join(year, pages);
+  // The column fits about eight small-caps characters per line, and a word
+  // longer than a line can't wrap — it gets cropped mid-letter. So the test
+  // is the longest word, not the whole string: "Dune #2" keeps its name,
+  // "Stormlight #2" steps down to the number.
+  const fits = name && [name, pos].filter(Boolean).join(" ")
+    .split(" ").every((w) => w.length <= 8);
+  const series = name
+    ? fits ? [name, pos].filter(Boolean).join(" ")
+           : pos ? `${pos} in the series` : null
+    : null;
+  return [series, pages].filter(Boolean);
 }
 
 // Icon-only at rest, so five actions fit in a rail down the side of the card.
@@ -917,17 +920,14 @@ function gridCard(b, showNames) {
           <button class="page-edge" data-flip aria-label="Quick actions and details"></button>
         </div>
         <div class="flip-back" aria-hidden="true">
-          <div class="cc-main">
-          <div class="cc-head">
-            <p class="cc-title">${esc(b.title)}</p>
-            <p class="cc-author">${esc((b.authors ?? [])[0] ?? "")}</p>
-          </div>
-          <p class="qa-facts">${esc(factsLine(b))}</p>
           <div class="qa-stars">
             ${[1, 2, 3, 4, 5].map((n) =>
               `<button class="${rating >= n ? "filled" : ""}" data-qa-rate="${n}"
                        aria-label="Rate ${n}">${rating >= n ? "★" : "☆"}</button>`).join("")}
           </div>
+          <div class="cc-body">
+          <div class="cc-main">
+          ${factLines(b).map((f) => `<p class="qa-facts">${esc(f)}</p>`).join("")}
           <p class="cc-review">${esc(b.reviews?.[currentProfile()]?.text ?? "")}</p>
           </div>
           <div class="cc-side">
@@ -945,6 +945,7 @@ function gridCard(b, showNames) {
             <button class="qa-details" data-qa-details title="Book details" aria-label="Book details">${icon("page")}</button>
             <button class="qa-remove" data-qa-remove
                     aria-label="Remove from library" title="Remove from library">${icon("trash")}</button>
+          </div>
           </div>
           </div>
         </div>
