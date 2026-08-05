@@ -95,6 +95,28 @@ but syncing will report an error, because the rules will refuse every write.
 > for family and friends; a public release would want real accounts (see
 > `docs/SECURITY.md`).
 
+## 2c. Turn on email sign-in (recommended)
+
+Same screen, one more provider: **Email/Password**, toggle **Enable**, save.
+
+This powers the optional account in *Settings → Shared library → Protect your
+membership*. Without an account, a device's identity lives only in its browser
+storage — and on a phone, deleting the home-screen app deletes that storage,
+membership included. Getting back in then needs another member to approve you,
+which fails badly when the deleted device was the only member. With an email
+linked, a fresh install signs in, joins with the library name + password, and
+is recognised instantly.
+
+Skipping this step is fine: the app simply shows no account section, and if
+someone tries anyway the error message points back here.
+
+> **Two settings to leave alone** in Authentication → Settings:
+> - Keep **automatic deletion of anonymous accounts** OFF. It purges accounts
+>   untouched for 30 days, which would orphan the ratings and reviews of
+>   anyone who hadn't opened the app that month.
+> - Email enumeration protection can stay on; the app's error messages don't
+>   distinguish "no such account" from "wrong password" anyway.
+
 ## 3. Get your web app config
 
 1. Click the ⚙️ gear (top-left) → **Project settings**.

@@ -3535,6 +3535,68 @@ function wireRequestButtons(el) {
   );
 }
 
+// The account section on the active-sync screen. This is the LINK side of
+// the account story — it must only ever attach a credential to the existing
+// signed-in user, because this device owns a membership and possibly years
+// of ratings, all keyed to its current uid. (The sign-in side lives on the
+// join screen, where a device has nothing to lose.) See js/sync.js.
+function accountSectionHtml() {
+  if (!sync.accountAvailable()) return "";
+  const email = sync.accountEmail();
+  if (email) {
+    return `
+      <div class="settings-section">
+        <span class="filter-label">Your account</span>
+        <p class="muted" style="margin:0.4rem 0 0">${icon("check")} Signed in as
+        <strong>${esc(email)}</strong>. Your place in this library survives
+        reinstalls — on a new device or browser, sign in with this email, then
+        join with the library name and password, and you'll be let straight in.</p>
+      </div>`;
+  }
+  return `
+    <div class="settings-section">
+      <span class="filter-label">Protect your membership</span>
+      <p class="muted" style="margin:0.4rem 0 0.5rem">
+        Right now your place in this library lives only on this device — if the
+        app is ever deleted or the browser cleared, getting back in needs
+        another member's approval. Add an email and you can sign back in from
+        anywhere, no approval needed.</p>
+      <form id="link-account-form">
+        <div class="inline-form">
+          <input type="email" id="link-email" placeholder="Email" autocomplete="email" />
+        </div>
+        <div class="inline-form">
+          <input type="password" id="link-password" placeholder="Account password (6+ characters)"
+                 autocomplete="new-password" />
+        </div>
+        <div class="detail-actions" style="margin-top:0.35rem">
+          <button type="submit" class="primary-btn">Link account</button>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin:0.4rem 0 0">
+          This is a new password for signing in — not your library password, and
+          it doesn't need to match it.</p>
+      </form>
+    </div>`;
+}
+
+function wireAccountForm(el) {
+  const form = el.querySelector("#link-account-form");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const email = await sync.linkAccount(
+        $("#link-email").value, $("#link-password").value
+      );
+      toast(`Linked — you can now sign in as ${email} from any device.`);
+    } catch (err) {
+      toast(err.message, { ms: 8000 });
+      return;
+    }
+    renderSyncScreen();
+  });
+}
+
 function renderSyncActive(el) {
   const requestBlock = requestsHtml();
   const memberBlock = requestBlock + `
@@ -3544,7 +3606,7 @@ function renderSyncActive(el) {
       <p class="muted" style="font-size:0.75rem;margin:0.5rem 0 0">
         One entry per device — a phone and a tablet show separately. Names come
         from each device's profile.</p>
-    </div>`;
+    </div>` + accountSectionHtml();
 
   const leaveBlock = `
     ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
@@ -3614,6 +3676,7 @@ function renderSyncActive(el) {
 
   wireMemberButtons(el);
   wireRequestButtons(el);
+  wireAccountForm(el);
   $("#leave-btn").addEventListener("click", () => {
     if (confirm("Leave the shared library on this phone? Your books stay on this phone and in the cloud for other members.")) {
       sync.leave();
@@ -3626,6 +3689,16 @@ function renderSyncActive(el) {
 }
 
 function renderSyncJoin(el) {
+  // Load the SDK so the sign-in section can offer itself; re-render once it's
+  // there. Harmless when already loaded, a no-op when sync isn't configured.
+  if (!sync.accountAvailable()) {
+    sync.warmup().then(() => {
+      // Re-render to reveal the sign-in section — but never over someone's
+      // half-typed library name if the SDK took its time loading.
+      const untouched = !$("#library-name")?.value && !$("#library-password")?.value;
+      if (currentScreen === "sync" && !sync.currentHousehold() && untouched) renderSyncScreen();
+    }).catch(() => {});
+  }
   el.innerHTML = `
     <p>Name your library and protect it with a password. Whoever enters the
     <strong>same name and password</strong> lands in the same library — create
@@ -3647,6 +3720,29 @@ function renderSyncJoin(el) {
                 data-intent="create">Create new library</button>
       </div>
     </form>
+    ${sync.accountAvailable() ? `
+    <div class="settings-section" style="margin-top:0.9rem">
+      <span class="filter-label">Already a member?</span>
+      ${sync.accountEmail() ? `
+      <p class="muted" style="margin:0.4rem 0 0">${icon("check")} Signed in as
+      <strong>${esc(sync.accountEmail())}</strong> — join above with the library
+      name and password and you'll be let straight in.</p>` : `
+      <p class="muted" style="margin:0.4rem 0 0.5rem">
+        If you linked an account on your old device, sign in first — then join
+        above and you'll be recognised, with no approval needed.</p>
+      <form id="signin-form">
+        <div class="inline-form">
+          <input type="email" id="signin-email" placeholder="Email" autocomplete="email" />
+        </div>
+        <div class="inline-form">
+          <input type="password" id="signin-password" placeholder="Account password"
+                 autocomplete="current-password" />
+        </div>
+        <div class="detail-actions" style="margin-top:0.35rem">
+          <button type="submit" class="secondary-btn" style="margin-top:0">Sign in</button>
+        </div>
+      </form>`}
+    </div>` : ""}
     <p class="muted" style="font-size:0.78rem;margin-top:0.8rem">
       The password is only ever used on your phones to locate the library — it's
       never sent or stored online, so pick something you'll both remember.
@@ -3665,6 +3761,20 @@ function renderSyncJoin(el) {
   $("#library-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     await activateNamed($("#library-name").value, $("#library-password").value, intent === "create");
+  });
+
+  el.querySelector("#signin-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const email = await sync.signInAccount(
+        $("#signin-email").value, $("#signin-password").value
+      );
+      toast(`Signed in as ${email} — now join your library above.`);
+    } catch (err) {
+      toast(err.message, { ms: 8000 });
+      return;
+    }
+    renderSyncScreen();
   });
 
   $("#legacy-toggle").addEventListener("click", () =>
@@ -3698,7 +3808,7 @@ async function activateNamed(name, password, create) {
         ...syncOpts(),
       });
     } else {
-      await sync.requestJoin({
+      const res = await sync.requestJoin({
         name,
         password,
         localBooks: () => db.getAllBooks(),
@@ -3708,6 +3818,7 @@ async function activateNamed(name, password, create) {
         profileName: currentProfile(),
         onResolved: onJoinResolved,
       });
+      if (res?.recognised) toast("Welcome back — your account was recognised, no approval needed.");
     }
   } catch (err) {
     syncError = err.message;
