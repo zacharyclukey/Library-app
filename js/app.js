@@ -891,6 +891,10 @@ function gridCard(b, showNames) {
           <button class="page-edge" data-flip aria-label="Quick actions and details"></button>
         </div>
         <div class="flip-back" aria-hidden="true">
+          <div class="cc-head">
+            <p class="cc-title">${esc(b.title)}</p>
+            <p class="cc-author">${esc((b.authors ?? [])[0] ?? "")}</p>
+          </div>
           <p class="qa-facts">${esc([
             b.publishDate ? String(b.publishDate).match(/\d{4}/)?.[0] : null,
             b.pageCount ? `${b.pageCount}pp` : null,
