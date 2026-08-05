@@ -3612,23 +3612,43 @@ function renderAccountScreen() {
     return;
   }
 
+  // What this device would lose by becoming somebody else. An anonymous user
+  // with books or a library membership is the common case — they've been
+  // using Shelfie for months without an account — and the whole point of
+  // adding one is that it costs them nothing.
+  const bookCount = db.getAllBooks().length;
+  const inLibrary = !!sync.currentHousehold();
+  const hasStake = bookCount > 0 || inLibrary;
+
   el.innerHTML = `
     <p>Right now this device is its own island: open Shelfie from your home
     screen and from Safari and the app treats you as two different people,
     because each keeps its own storage. An account is how it knows you're you.</p>
     ${syncError ? `<p class="sync-error">${icon("alert")} ${esc(syncError)}</p>` : ""}
+    ${hasStake ? `
+    <p class="muted" style="font-size:0.82rem">
+      ${icon("check")} Adding an account keeps everything you already have —
+      ${bookCount ? `all <strong>${bookCount}</strong> book${bookCount === 1 ? "" : "s"}` : "your shelves"}${
+        inLibrary ? ", your place in the shared library," : ","} your ratings and
+      your reviews. It attaches a sign-in to the identity this device already
+      has rather than making a new one, so nothing changes hands.</p>` : ""}
     <form id="account-form">
       <div class="inline-form">
         <input type="email" id="account-email" placeholder="Email" autocomplete="email" />
       </div>
       <div class="inline-form">
         <input type="password" id="account-password" placeholder="Password (6+ characters)"
-               autocomplete="current-password" />
+               autocomplete="${hasStake ? "new-password" : "current-password"}" />
       </div>
       <div class="detail-actions" style="margin-top:0.35rem">
+        ${hasStake ? `
+        <button type="submit" class="primary-btn" data-intent="create">Add an account</button>
+        <button type="submit" class="secondary-btn" style="margin-top:0"
+                data-intent="signin">Sign in to an existing account</button>`
+        : `
         <button type="submit" class="primary-btn" data-intent="signin">Sign in</button>
         <button type="submit" class="secondary-btn" style="margin-top:0"
-                data-intent="create">Create account</button>
+                data-intent="create">Create account</button>`}
       </div>
     </form>
     <p class="muted" style="font-size:0.78rem;margin-top:0.7rem">
@@ -3636,7 +3656,7 @@ function renderAccountScreen() {
       this device either way — an account adds a backup of your own library and
       keeps every window signed in as the same you.</p>`;
 
-  let intent = "signin";
+  let intent = hasStake ? "create" : "signin";
   el.querySelectorAll("#account-form [data-intent]").forEach((btn) =>
     btn.addEventListener("click", () => { intent = btn.dataset.intent; })
   );
@@ -3645,10 +3665,27 @@ function renderAccountScreen() {
     const email = $("#account-email").value.trim();
     const password = $("#account-password").value;
     if (!email || !password) return toast("Enter an email and a password.");
+
+    // The one genuinely lossy move in this screen. "Add an account" LINKS —
+    // the uid is kept, so every rating and review this device wrote stays
+    // its own. "Sign in" REPLACES the identity, which is right on a fresh
+    // device and quietly destructive on one that has been in use: the books
+    // survive (they're local, and shared ones live in the household) but
+    // ownership of everything written under the old identity does not. So
+    // say that plainly rather than discovering it later.
+    if (intent === "signin" && hasStake) {
+      const ok = confirm(
+        "Sign in as a different identity?\n\n" +
+        "This device already has its own. Signing in swaps it out, which keeps " +
+        "your books but hands back ownership of the ratings and reviews written " +
+        "here — you'd no longer be able to edit or remove them.\n\n" +
+        "If this is your first account, tap Cancel and use “Add an account” " +
+        "instead — that keeps everything."
+      );
+      if (!ok) return;
+    }
+
     try {
-      // Creating on a device that already owns books must LINK, never replace:
-      // a new uid would orphan everything this device wrote. Signing in is the
-      // opposite case and is allowed to swap identity.
       if (intent === "create") await sync.linkAccount(email, password);
       else await sync.signInAccount(email, password);
     } catch (err) {
@@ -3656,7 +3693,9 @@ function renderAccountScreen() {
       return;
     }
     await afterSignIn();
-    toast(intent === "create" ? "Account created — you're signed in." : "Signed in.");
+    toast(intent === "create"
+      ? "Account added — everything on this device came with you."
+      : "Signed in.");
   });
 }
 
@@ -4065,11 +4104,17 @@ async function restoreAccount() {
 
   // The name travels with the account, so a new device is you rather than a
   // stranger who has to introduce themselves.
+  //
+  // Awaited, not fired and forgotten: start() writes the library membership to
+  // this same document a moment later, and two un-ordered writes race. Getting
+  // the name in first means the account is never left holding a library but no
+  // idea who you are — which is what a new device reads to answer both.
   if (acct.profileName && acct.profileName !== currentProfile()) {
     localStorage.setItem(PROFILE_KEY, acct.profileName);
     updateProfileChip();
   } else if (!acct.profileName && currentProfile()) {
-    sync.saveAccountProfile({ profileName: currentProfile() }).catch(() => {});
+    await sync.saveAccountProfile({ profileName: currentProfile() }).catch(() => {});
+    acct.profileName = currentProfile();
   }
 
   // Signed in on a device that isn't in the shared library your account is a

@@ -282,6 +282,102 @@ const cloudStillThere = [...cloud.keys()].filter((p) => p.startsWith(`users/${ap
 console.log("15. and the account still holds them:", cloudStillThere.length, "(want 2)");
 if (cloudStillThere.length !== 2) problems.push("signing out deleted books from the account");
 
+// ---------- 6. the upgrade: an anonymous member adopts an account ----------
+// The case almost every existing user is in — months of books, a shared
+// library, ratings — and has never had an account. Adding one must cost them
+// nothing: same uid, same membership, same shelf, and the ratings they wrote
+// as an anonymous user still theirs to edit.
+const OLD = await window_("longtime", [
+  { id: "o1", title: "The Fifth Season", authors: ["N. K. Jemisin"], shelf: "owned",
+    owned: true, ratings: { Kelsey: 5 }, addedAt: "2024-06-01T00:00:00Z" },
+  { id: "o2", title: "Book Lovers", authors: ["Emily Henry"], shelf: "completed",
+    owned: true, addedAt: "2024-06-02T00:00:00Z" },
+], "Kelsey");
+
+// They're in a shared library, the way they have been for months.
+await OLD.page.click("#settings-btn");
+await OLD.page.waitForTimeout(400);
+await OLD.page.click('.settings-row[data-go="sync"]');
+await OLD.page.waitForTimeout(700);
+await OLD.page.fill("#library-name", "Kelsey House");
+await OLD.page.fill("#library-password", "longmarriage");
+await OLD.page.click('[data-intent="create"]');
+await OLD.page.waitForTimeout(1200);
+
+const beforeUid = await uidOf(OLD.page);
+const beforeLib = await OLD.page.evaluate(() => localStorage.getItem("shelfie.household.v1"));
+console.log("16. anonymous member set up:", !!beforeLib, "| uid:", beforeUid);
+if (!beforeLib) problems.push("could not put the long-time user in a shared library");
+
+// The screen must lead with the safe move, not offer both as equals.
+await openAccount(OLD.page);
+const upgradeText = await OLD.page.locator("#account-content").textContent();
+const primaryLabel = await OLD.page.locator("#account-form .primary-btn").textContent();
+console.log("17. leads with the lossless option:", primaryLabel.trim(),
+  "| promises to keep things:", /keeps everything you already have/.test(upgradeText));
+if (!/Add an account/.test(primaryLabel)) {
+  problems.push(`a device with data leads with "${primaryLabel.trim()}", expected "Add an account"`);
+}
+if (!/2 books/.test(upgradeText)) problems.push("the upgrade copy did not count the books at stake");
+if (!/place in the shared library/.test(upgradeText)) {
+  problems.push("the upgrade copy did not mention the library membership at stake");
+}
+
+await OLD.page.fill("#account-email", "kelsey@example.com");
+await OLD.page.fill("#account-password", "hunter22");
+await OLD.page.click('#account-form [data-intent="create"]');
+await OLD.page.waitForTimeout(1400);
+
+const afterUid = await uidOf(OLD.page);
+console.log("18. upgrading kept the identity:", beforeUid === afterUid, `(${beforeUid} → ${afterUid})`);
+if (beforeUid !== afterUid) {
+  problems.push("adding an account changed the uid — everything written anonymously is orphaned");
+}
+
+const afterLib = await OLD.page.evaluate(() => localStorage.getItem("shelfie.household.v1"));
+console.log("19. still in the shared library:", afterLib === beforeLib);
+if (afterLib !== beforeLib) problems.push("adding an account dropped the shared-library membership");
+
+// The member doc is the thing a reinstall is recognised by; it must still be
+// this person's, and the account must now remember the library.
+const memberDoc = [...cloud.entries()]
+  .find(([p, d]) => p.startsWith(`households/${afterLib}/`) && p.includes("/_member:") && d.uid === afterUid);
+console.log("20. member entry still theirs:", !!memberDoc);
+if (!memberDoc) problems.push("the member entry no longer carries this user's uid after upgrading");
+
+const acctDoc = cloud.get(`users/${afterUid}`);
+console.log("21. account remembers the library:", acctDoc?.libId === afterLib,
+  "| and the name:", acctDoc?.profileName);
+if (acctDoc?.libId !== afterLib) problems.push("the account did not record the shared library");
+if (acctDoc?.profileName !== "Kelsey") problems.push("the account did not record the profile name");
+
+await OLD.page.click("#nav-shelves");
+await OLD.page.waitForTimeout(800);
+const oldBooks = await OLD.page.locator(".grid-book").count();
+console.log("22. books all still there:", oldBooks, "(want 2)");
+if (oldBooks !== 2) problems.push(`upgrading left ${oldBooks} books, expected 2`);
+
+// And the payoff: a brand-new device signs in and lands in the library
+// without anyone approving anything.
+const NEWDEV = await window_("newphone");
+await openAccount(NEWDEV.page);
+await NEWDEV.page.fill("#account-email", "kelsey@example.com");
+await NEWDEV.page.fill("#account-password", "hunter22");
+await NEWDEV.page.click('#account-form [data-intent="signin"]');
+await NEWDEV.page.waitForTimeout(1800);
+const newState = await NEWDEV.page.evaluate(() => ({
+  lib: localStorage.getItem("shelfie.household.v1"),
+  pending: localStorage.getItem("shelfie.pendingJoin.v1"),
+  profile: localStorage.getItem("shelfie.profile.v1"),
+}));
+console.log("23. new device walked into the library:", newState.lib === afterLib,
+  "| queued for approval:", !!newState.pending, "| as:", newState.profile);
+if (newState.lib !== afterLib) problems.push("signing in on a new device did not restore the shared library");
+if (newState.pending) problems.push("a signed-in member was parked in the approval queue");
+if (newState.profile !== "Kelsey") problems.push("the new device did not pick up the profile name");
+
+await OLD.ctx.close();
+await NEWDEV.ctx.close();
 await APP.ctx.close();
 await SAFARI.ctx.close();
 await browser.close();
