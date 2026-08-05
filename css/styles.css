@@ -1223,24 +1223,35 @@ img.cover.missing { display: none; }
   transition: transform 0.4s cubic-bezier(0.3, 0.9, 0.4, 1);
 }
 .flip-front { transform: rotateY(0deg); position: relative; }
-.flip-btn {
+/* The way into a book's actions is the fore-edge of the book itself — the
+   stack of page ends you'd put a thumb on to open it. It belongs to the
+   object instead of floating on top of the artwork, which is what the old
+   three-dot button did: a UI control parked on somebody's cover. */
+.page-edge {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: 50%;
+  top: 6%;
+  bottom: 6%;
+  right: 0;
+  width: 11px;
   border: none;
-  background: color-mix(in srgb, var(--card) 82%, transparent);
-  backdrop-filter: blur(4px);
-  color: var(--ink);
-  font-size: 0.95rem;
-  line-height: 1;
   padding: 0;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
+  border-radius: 0 6px 6px 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--page-edge-ink, #d9cdb4) 92%, #000) 0 1px,
+      var(--page-edge-ink, #d9cdb4) 1px 2.5px
+    );
+  box-shadow: inset 1px 0 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: width 0.16s ease, filter 0.16s ease;
 }
-.flip-btn:active { transform: scale(0.92); }
+.page-edge:hover { width: 14px; filter: brightness(1.06); }
+.page-edge:active { filter: brightness(0.94); }
+.grid-book:hover .page-edge { width: 13px; }
+/* The back is the checkout card out of the pocket inside a library book:
+   card stock, a ruled head, and your own marks on it. The texture is a file
+   you can replace — assets/textures/card-stock.svg. */
 .flip-back {
   position: absolute;
   inset: 0;
@@ -1248,16 +1259,76 @@ img.cover.missing { display: none; }
   transform: rotateY(180deg);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 0.15rem;
-  background: var(--card);
-  border: 1px solid var(--accent-border);
-  border-radius: 3px 7px 7px 3px;
-  box-shadow: var(--shadow-2);
-  padding: 0.45rem 0.4rem;
+  gap: 0.3rem;
+  background-color: var(--card-stock, #f3ead6);
+  background-image: var(--card-stock-texture, url("../assets/textures/card-stock.svg"));
+  background-size: 120px 120px;
+  color: var(--stock-ink, #4a3b28);
+  border: 1px solid color-mix(in srgb, var(--stock-ink, #4a3b28) 22%, transparent);
+  border-radius: 2px;
+  box-shadow: var(--shadow-2), inset 0 0 22px rgba(120, 95, 60, 0.13);
+  padding: 0.5rem 0.42rem 0.45rem;
+}
+/* The ruled line under the head, like the DATE DUE heading on a real one. */
+.flip-back::before {
+  content: "";
+  position: absolute;
+  left: 0.42rem;
+  right: 0.42rem;
+  top: 1.65rem;
+  height: 1px;
+  background: color-mix(in srgb, var(--stock-ink, #4a3b28) 34%, transparent);
 }
 .flip.flipped .flip-front { transform: rotateY(-180deg); }
 .flip.flipped .flip-back { transform: rotateY(0deg); }
+
+/* A cover is a poor shape for a card of actions — everything on the back was
+   squeezed into a 2:3 slot meant for artwork. Turning the card lengthens it,
+   and the growth is steered into rows you've already scrolled past (see
+   setFlipped) so nothing you're reading jumps. */
+.flip .cover-wrap { transition: aspect-ratio 0.4s cubic-bezier(0.3, 0.9, 0.4, 1); }
+.flip.flipped .cover-wrap { aspect-ratio: 2 / 3.75; }
+@media (prefers-reduced-motion: reduce) {
+  .flip .cover-wrap { transition: none; }
+}
+
+/* Everything on the card takes its colour from the stock, not the theme —
+   a checkout card is cream in a dark room too, so theme ink on it would be
+   invisible half the time. */
+.flip-back .qa-facts {
+  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 68%, transparent);
+  font-size: 0.56rem;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  height: 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* One line, always — it sits above a ruled line and mustn't cross it. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 1.15rem;
+  text-align: center;
+}
+.flip-back .qa-btn {
+  background: color-mix(in srgb, var(--stock-ink, #4a3b28) 6%, transparent);
+  border-color: color-mix(in srgb, var(--stock-ink, #4a3b28) 26%, transparent);
+  color: var(--stock-ink, #4a3b28);
+}
+.flip-back .qa-btn.on {
+  background: color-mix(in srgb, var(--gold) 26%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+}
+.flip-back .qa-stars button { color: color-mix(in srgb, var(--stock-ink, #4a3b28) 40%, transparent); }
+.flip-back .qa-stars button.filled { color: var(--gold); }
+.flip-back .qa-remove {
+  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 55%, transparent);
+  border-color: color-mix(in srgb, var(--stock-ink, #4a3b28) 26%, transparent);
+}
+.flip-back .qa-remove:hover { color: var(--red); border-color: var(--red); background: transparent; }
+.flip-back .qa-row { margin-top: auto; }
 
 .qa-stars { display: flex; justify-content: center; }
 .qa-stars button {

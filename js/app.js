@@ -888,7 +888,7 @@ function gridCard(b, showNames) {
       <div class="flip">
         <div class="flip-front">
           ${coverHtml(b)}
-          <button class="flip-btn" data-flip aria-label="Quick actions and details">${icon("more")}</button>
+          <button class="page-edge" data-flip aria-label="Quick actions and details"></button>
         </div>
         <div class="flip-back" aria-hidden="true">
           <p class="qa-facts">${esc([
@@ -1829,12 +1829,49 @@ function disarmQuickAction() {
   armedBtn = null;
 }
 
+// Turning a card lengthens it, which reflows the whole grid below. Left
+// alone, a book near the bottom of the screen shoves everything under it
+// further down — into rows you haven't reached yet — and the row you were
+// actually looking at slides away under your thumb.
+//
+// So the growth is pushed the other way: the page is scrolled by however much
+// the card grew, which pins everything below it exactly where it was and
+// spends the new height on the rows above — the ones you've already scrolled
+// past and are done with. Shrinking on the way back does the reverse.
+//
+// Cards near the very top of the page are the exception: there's nothing
+// above to spend, and scrolling would just fight the top of the list.
 function setFlipped(flip, id, on) {
   disarmQuickAction();
+  const before = flip.getBoundingClientRect();
+  const scroller = document.scrollingElement ?? document.documentElement;
+  const roomAbove = scroller.scrollTop;
+
   flip.classList.toggle("flipped", on);
   if (on) flippedIds.add(id);
   else flippedIds.delete(id);
   navigator.vibrate?.(8);
+
+  // The card grows over the length of the flip animation, so the correction
+  // is applied every frame rather than once at the end — a single catch-up
+  // jump afterwards would be the very lurch this exists to prevent. Measured
+  // rather than predicted, because the aspect ratio belongs to the skin.
+  if (roomAbove < 4 && on) return; // at the top of the list: nothing to spend
+  let last = before.height;
+  const until = performance.now() + 520; // the 0.4s transition, plus slack
+  const pin = () => {
+    const now = flip.getBoundingClientRect().height;
+    const grew = now - last;
+    if (grew) {
+      // Growing: only take from what's above, never scroll past the top.
+      // Shrinking: give it straight back.
+      const shift = grew > 0 ? Math.min(grew, scroller.scrollTop) : grew;
+      if (shift) scroller.scrollTop += shift;
+      last = now;
+    }
+    if (performance.now() < until) requestAnimationFrame(pin);
+  };
+  requestAnimationFrame(pin);
 }
 
 // Long-press anywhere on a card is a shortcut to the same quick actions.
