@@ -136,12 +136,15 @@ function starString(rating) {
   return "★".repeat(n) + "☆".repeat(5 - n);
 }
 
-// A cover that always looks intentional: a coloured spine-styled fallback
-// (stable colour per title) sits underneath, and the real jacket covers it
-// when one loads.
+// A cover that always looks intentional: a spine-styled fallback sits
+// underneath, and the real jacket covers it when one loads. The colour is
+// one of eight cloths the current aesthetic stocks its shelves with —
+// hueOf gives a stable number per title, so the same book always binds in
+// the same cloth, but WHICH eight cloths is the skin's own choice
+// (--spine-1..8 in css/styles.css, yours in css/custom.css).
 function coverHtml(b) {
   const author = (b.authors ?? [])[0] ?? "";
-  return `<div class="cover-wrap" style="--h:${xport.hueOf(b.title)}">
+  return `<div class="cover-wrap" style="--spine:var(--spine-${(xport.hueOf(b.title) % 8) + 1})">
       <div class="cover-fallback">
         <span class="fb-title">${esc(b.title)}</span>
         ${author ? `<span class="fb-author">${esc(author)}</span>` : ""}

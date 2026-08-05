@@ -91,6 +91,12 @@ labelled in plain English:
 Change `--accent` alone and you'll see a real difference — it's the colour on
 every button and active control.
 
+The same section holds the **spine colours** — the eight cloths used for
+books that have no cover picture. Every aesthetic stocks its own set (they're
+in `css/styles.css` with the rest of each palette), and the "Yours" set is in
+your file, one line per colour. Keep them dark; the title sits on top in
+`--spine-ink`, which should stay near-white, like foil stamping on cloth.
+
 ### Picking colours
 
 Grab hex codes (`#6a5a48`) from anywhere: a photo, [coolors.co](https://coolors.co),
