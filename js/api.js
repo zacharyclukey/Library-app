@@ -19,6 +19,25 @@ export function normalizeIsbn(raw) {
   return null;
 }
 
+// The last character of an ISBN is a check digit derived from the others, so
+// a mistyped one can be caught here rather than becoming a lookup that comes
+// back empty — and "no book found for 9780593135203" reads like the book
+// doesn't exist, when really a digit got fumbled.
+export function isbnChecksumOk(raw) {
+  const s = normalizeIsbn(raw);
+  if (!s) return false;
+  if (s.length === 13) {
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += Number(s[i]) * (i % 2 ? 3 : 1);
+    return (10 - (sum % 10)) % 10 === Number(s[12]);
+  }
+  // ISBN-10 is mod 11, and its check digit may be X for ten.
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(s[i]) * (10 - i);
+  sum += s[9] === "X" ? 10 : Number(s[9]);
+  return sum % 11 === 0;
+}
+
 export function isbn10to13(isbn10) {
   const core = "978" + isbn10.slice(0, 9);
   let sum = 0;

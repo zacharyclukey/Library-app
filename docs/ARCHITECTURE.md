@@ -12,24 +12,25 @@ Pages. `npm` appears only so the test suite can install a headless browser —
 the app itself never touches `node_modules`.
 
 ```
-~11,600 lines total
-  js/app.js         4,207   UI, state, event handling, screen routing
-  css/styles.css    2,340   tokens, five skins × light/dark, layout
-  js/sync.js          633   Firebase household sync, membership, join approval
-  js/api.js           511   Open Library / Google Books, series detection
-  js/candidates.js    408   where a recommendation can come from (five sources)
-  js/rank.js          361   feature vector, weights, diversity, explanations
-  css/identity.css    332   the motifs that survive every skin
-  index.html          323   every screen and dialog, statically declared
-  js/taste.js         282   one reader's signed, decayed taste profile
-  js/social.js        279   following, friends, activity feed
-  js/signals.js       276   what the reader did — the feedback loop
+~13,900 lines total, none of it compiled
+  js/app.js         4,960   UI, state, event handling, screen routing
+  css/styles.css    2,802   tokens, five skins × light/dark, layout
+  js/sync.js          818   Firebase household sync, membership, join approval
+  js/api.js           530   Open Library / Google Books, series detection
+  js/candidates.js    414   where a recommendation can come from (five sources)
+  index.html          410   every screen and dialog, statically declared
+  js/rank.js          364   feature vector, weights, diversity, explanations
+  css/identity.css    363   the motifs that survive every skin
+  js/ean13.js         354   EAN-13/UPC-A decoding, no dependencies
+  js/db.js            342   localStorage store + schema repair
+  js/taste.js         327   one reader's signed, decayed taste profile
+  js/signals.js       290   what the reader did — the feedback loop
+  js/social.js        281   following, friends, activity feed
   js/filters.js       247   genre map, filter predicates, sort orders
   js/community.js     243   shared ratings/tags/reviews, co-read scoring
-  js/db.js            236   localStorage store + schema repair
-  js/export.js        214   printable HTML, text, CSV, JSON
-  js/icons.js         206   inline SVG icon set
-  js/scanner.js       141   BarcodeDetector + ZXing fallback
+  js/export.js        218   printable HTML, text, CSV, JSON
+  js/icons.js         218   inline SVG icon set
+  js/scanner.js       203   BarcodeDetector + our own reader, merged
   js/assets.js        139   optional artwork discovery
   js/themes.js        112   skin registry, light/dark resolution
 ```
@@ -201,9 +202,11 @@ route wins**, so catch-all mocks must be registered *before* specific ones.
 
 ## Known soft spots
 
-- `app.js` at 3,685 lines is the obvious refactor target.
-- `js/scanner.js` falls back to ZXing from a CDN — a third-party runtime
-  dependency that should be vendored before any public release.
+- `app.js` at 4,555 lines is the obvious refactor target.
+- Barcode reading is now entirely on-device (`js/ean13.js`); there is no
+  runtime CDN dependency left. The reader is deliberately narrow — EAN-13 and
+  UPC-A only — so it would need extending before it could read anything that
+  isn't a book barcode.
 - No accessibility audit has been done: focus management in dialogs and
   screen-reader labelling are unverified.
 - Community summaries are last-writer-wins, recomputed client-side.

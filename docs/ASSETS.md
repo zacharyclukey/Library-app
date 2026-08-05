@@ -50,12 +50,27 @@ drawing is used as-is.
 
 | Name | Where it appears |
 | --- | --- |
-| `mark` | The Shelfie mark in the top bar, and on an empty shelf |
+| `mark` | The Shelfie mark in the top bar |
 
 This one behaves slightly differently from the rest: it keeps a single line
 weight in every aesthetic, where other icons follow the skin's hand. See
 [IDENTITY.md](IDENTITY.md) for why, and for the home-screen icon, which is a
 separate asset entirely.
+
+### Empty states
+
+| Name | Where it appears |
+| --- | --- |
+| `emptyShelf` | On a shelf with nothing on it |
+| `search` | When a search or filter matched nothing — also the search box |
+
+The picture answers the sentence underneath it, so these are two drawings
+rather than one: an empty shelf and a search that found nothing are different
+problems, and bare shelving over "nothing matches your filters" reads as
+though the books had gone missing.
+
+Dropping a file at `assets/empty.png` replaces the empty-shelf drawing with
+your own artwork (see Pictures, above) — that slot wins over `emptyShelf`.
 
 ### Shelves & status
 

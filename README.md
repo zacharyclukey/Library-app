@@ -7,9 +7,15 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
 
 - **Add books by photo** 📷
   - **Live camera scan** — point your phone at the barcode on the back cover.
-  - **Take/upload a picture** — snap a photo (a shot with *several* books' barcodes
-    visible adds them all at once).
-  - Manual fallback: type an ISBN or search by title/author.
+  - **Take/upload a picture** — snap a photo *or* pick one from your camera
+    roll, and select several at once if a big shelf took a few shots. A shot
+    with *several* books' barcodes visible really does add them all: the reader
+    scans the whole picture rather than stopping at the first barcode it finds,
+    and everything it found comes up as one list you tick through and send to a
+    shelf in a single tap (undoable as one).
+  - Manual fallback: type an ISBN or search by title/author. A mistyped ISBN is
+    caught by its own check digit — you get "that isn't a valid ISBN" rather than
+    a puzzling "no book found" that reads as though the book doesn't exist.
 - **Edition-accurate records** — the scanned ISBN identifies the *specific version*
   you own: publisher, publish date, physical format (hardcover/paperback), page
   count, ISBN-10/13, Open Library edition key, and that edition's cover art.
@@ -116,8 +122,11 @@ A zero-build web app for tracking the books you **own**, want **to read**, and h
   ✅ owned / ◻️ not owned.
 - **Say it yourself when the databases don't know** ✍️ — the free catalogues have
   thin data on indie and self-published books, and no amount of guessing fixes a
-  series nobody indexed. Every book's detail view has a **Set the series
-  yourself** field (with a picker of series already in your library, so the rest
+  series nobody indexed. When a scan or a search turns up nothing, **add it
+  yourself**: type the title (and author, year, pages if you like) and it goes on
+  the shelf like any other book, keeping the ISBN you scanned so the same barcode
+  finds *your* record later instead of making a second copy. Every book's detail
+  view also has a **Set the series yourself** field (with a picker of series already in your library, so the rest
   of the set is one tap each). What you set beats detection, never gets
   overwritten, syncs to the household, and groups the shelf straight away.
   "Not in a series" sticks too, instead of being re-guessed every launch.
@@ -226,7 +235,7 @@ Pages, Netlify, or `npx serve` behind a tunnel) so the camera is allowed.
 
 | Piece | Approach |
 | --- | --- |
-| Barcode reading | Native `BarcodeDetector` API (Chrome/Edge/Android); automatic fallback to the ZXing library (loaded on demand) on Safari/Firefox |
+| Barcode reading | The platform's `BarcodeDetector` where it exists (Chrome/Edge/Android), **plus** our own EAN-13 reader in `js/ean13.js`, always. The built-in one sweeps the picture line by line and returns *every* barcode it crosses, which is what makes one photo of eight books add eight books. No library, no CDN, works offline |
 | Book metadata | Open Library ISBN API (edition-specific), gaps filled from Google Books |
 | Series detection | Your own manual tag (wins outright) → edition series tags → other editions of the same work → Google Books title/subtitle patterns ("(L.O.R.D.S. Book 1)", "(Book 2 of …)", "(… , #3)"); series roster from Open Library search |
 | Storage | `localStorage`, JSON export/import |
@@ -312,4 +321,5 @@ js/export.js      printable page / text / CSV / JSON exports
 js/sync.js        optional shared-household sync (Firebase)
 js/social.js      following, friends, and the reading feed
 js/scanner.js     camera + photo barcode scanning
+js/ean13.js       the EAN-13/UPC-A reader itself (no dependencies)
 ```

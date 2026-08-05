@@ -121,7 +121,8 @@ Everything sits in one folder. The parts you'd ever touch are at the top.
 | `js/app.js` | The big one: what happens when you tap things |
 | `js/db.js` | Saving and loading your books |
 | `js/api.js` | Talking to Open Library and Google Books |
-| `js/scanner.js` | Reading barcodes from the camera |
+| `js/scanner.js` | Reading barcodes from the camera and from photos |
+| `js/ean13.js` | The barcode reader itself — finds every code in a picture |
 | `js/filters.js` | Searching, filtering, sorting |
 | `js/themes.js` | The five aesthetics and light/dark |
 | `js/sync.js` | The shared library |

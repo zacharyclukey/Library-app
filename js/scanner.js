@@ -1,76 +1,125 @@
-// Barcode scanning: reads EAN-13 ISBN barcodes from a live camera feed or
-// from a still photo. Uses the native BarcodeDetector API where available
-// (Chrome, Edge, Android) and falls back to the ZXing library (loaded on
-// demand from a CDN) elsewhere (Firefox, Safari).
+// Barcode scanning: reads EAN-13 ISBN barcodes from a still photo or a live
+// camera feed.
+//
+// Two readers, used together rather than one as a fallback for the other:
+//
+//   · The platform's own BarcodeDetector (Chrome, Edge, Android), where it
+//     exists. Fast and well tuned, but it reports what it happens to see in
+//     one look — on a photo of a whole pile it typically returns two or three.
+//   · Our own reader in ean13.js, which sweeps the picture line by line and
+//     collects *every* barcode it crosses.
+//
+// The photo path runs both and merges the results, so a shot of eight books
+// adds eight books. Nothing is fetched from a CDN: the app keeps working with
+// no connection, which matters for a scanner you might be using in a room with
+// bad signal, and it costs nothing to run.
+
+import { readBarcodes, greyscaleFrom, sharpen, ean13Checksum } from "./ean13.js";
 
 const ISBN_FORMATS = ["ean_13", "ean_8", "upc_a"];
 
-let zxingReaderPromise = null;
+// Phone photos are big; this is the working size for the still-photo pass.
+// Book barcodes are physically small, so a shelf shot can put a whole symbol
+// in a couple of hundred pixels — throwing resolution away loses books.
+const MAX_WORKING_EDGE = 4000;
 
-function nativeDetectorSupported() {
-  return "BarcodeDetector" in window;
-}
-
-async function getZxingReader() {
-  if (!zxingReaderPromise) {
-    zxingReaderPromise = import(
-      "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm"
-    ).then((mod) => new mod.BrowserMultiFormatReader());
-  }
-  return zxingReaderPromise;
-}
-
+// Shape *and* check digit. Our own reader already refuses anything whose
+// checksum doesn't add up, but the platform detector doesn't promise that —
+// and a barcode misread by one digit is a plausible-looking ISBN for a
+// completely different book, which is a worse outcome than reading nothing.
 function looksLikeIsbn(code) {
-  return /^97[89]\d{10}$/.test(code) || /^\d{9}[\dX]$/.test(code);
+  if (/^97[89]\d{10}$/.test(code)) {
+    const digits = [...code].map(Number);
+    return ean13Checksum(digits) === digits[12];
+  }
+  if (/^\d{9}[\dX]$/.test(code)) {
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += Number(code[i]) * (10 - i);
+    sum += code[9] === "X" ? 10 : Number(code[9]);
+    return sum % 11 === 0;
+  }
+  return false;
+}
+
+let nativeDetector; // undefined = untried, null = unavailable
+
+async function getNativeDetector() {
+  if (nativeDetector !== undefined) return nativeDetector;
+  nativeDetector = null;
+  try {
+    if ("BarcodeDetector" in window) {
+      // Having the constructor doesn't mean having these formats.
+      const supported = await BarcodeDetector.getSupportedFormats();
+      const formats = ISBN_FORMATS.filter((f) => supported.includes(f));
+      if (formats.length) nativeDetector = new BarcodeDetector({ formats });
+    }
+  } catch {
+    nativeDetector = null;
+  }
+  return nativeDetector;
+}
+
+async function nativeCodes(source) {
+  try {
+    const detector = await getNativeDetector();
+    if (!detector) return [];
+    const results = await detector.detect(source);
+    return results.map((r) => r.rawValue).filter(looksLikeIsbn);
+  } catch {
+    return []; // unsupported source, or the frame wasn't ready
+  }
 }
 
 // ---------- Still photo ----------
 
-// Detect every ISBN barcode in an image file. Returns unique ISBN strings.
-// A photo of a stack of books can yield several.
-export async function scanImageFile(file) {
-  const bitmap = await createImageBitmap(file);
+// Browsers disagree about what they can turn into an ImageBitmap — Safari has
+// historically balked at HEIC, which is exactly what an iPhone hands over. An
+// <img> decodes anything the browser can display, so fall back to that rather
+// than telling someone their own camera roll is unreadable.
+async function loadImage(file) {
   try {
-    if (nativeDetectorSupported()) {
-      const detector = new BarcodeDetector({ formats: ISBN_FORMATS });
-      const results = await detector.detect(bitmap);
-      const codes = results.map((r) => r.rawValue).filter(looksLikeIsbn);
-      if (codes.length) return [...new Set(codes)];
-    }
-  } catch { /* fall through to ZXing */ }
-
-  // ZXing decodes one code per image; try the full frame, then halves,
-  // so a two-book photo still has a chance.
-  const found = new Set();
-  const reader = await getZxingReader();
-  for (const region of imageRegions(bitmap)) {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    return { source: bitmap, release: () => bitmap.close?.() };
+  } catch {
+    const url = URL.createObjectURL(file);
     try {
-      const result = await reader.decodeFromCanvas(region);
-      const code = result?.getText?.();
-      if (code && looksLikeIsbn(code)) found.add(code);
-    } catch { /* no code in this region */ }
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      return { source: img, release: () => URL.revokeObjectURL(url) };
+    } catch (err) {
+      URL.revokeObjectURL(url);
+      throw err;
+    }
   }
-  return [...found];
 }
 
-function* imageRegions(bitmap) {
-  const full = document.createElement("canvas");
-  full.width = bitmap.width;
-  full.height = bitmap.height;
-  full.getContext("2d").drawImage(bitmap, 0, 0);
-  yield full;
+/**
+ * Find every ISBN barcode in an image file. Returns unique ISBN strings — a
+ * photo of a stack of books yields one per book.
+ */
+export async function scanImageFile(file) {
+  const { source, release } = await loadImage(file);
+  try {
+    const found = new Set();
+    const add = (codes) => codes.forEach((c) => found.add(c));
 
-  for (const [sx, sy, sw, sh] of [
-    [0, 0, bitmap.width, bitmap.height / 2],
-    [0, bitmap.height / 2, bitmap.width, bitmap.height / 2],
-    [0, 0, bitmap.width / 2, bitmap.height],
-    [bitmap.width / 2, 0, bitmap.width / 2, bitmap.height],
-  ]) {
-    const c = document.createElement("canvas");
-    c.width = sw;
-    c.height = sh;
-    c.getContext("2d").drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
-    yield c;
+    add(await nativeCodes(source));
+
+    const { grey, width, height } = greyscaleFrom(source, MAX_WORKING_EDGE);
+    add(readBarcodes(grey, width, height));
+
+    // A softly focused photo loses its narrow bars to blur. Sharpening brings
+    // them back, and it finds books the first pass missed often enough to be
+    // worth running every time rather than only as a rescue.
+    add(readBarcodes(sharpen(grey, width, height, 1.5), width, height));
+
+    // Nothing at all? One more go, harder, before giving up on the picture.
+    if (!found.size) add(readBarcodes(sharpen(grey, width, height, 2.6), width, height));
+
+    return [...found];
+  } finally {
+    release();
   }
 }
 
@@ -78,10 +127,12 @@ function* imageRegions(bitmap) {
 
 let activeStream = null;
 let scanLoopId = null;
-let zxingControls = null;
+let scanTimerId = null;
 
-// Start a live scan on the given <video>. Calls onCode(isbn) once per
-// detected code. Returns a stop() function.
+/**
+ * Start a live scan on the given <video>. Calls onCode(isbn) once per distinct
+ * code seen. Returns a stop() function.
+ */
 export async function startLiveScan(videoEl, onCode, onError) {
   stopLiveScan(videoEl);
   const reported = new Set();
@@ -93,15 +144,16 @@ export async function startLiveScan(videoEl, onCode, onError) {
   };
 
   try {
-    if (nativeDetectorSupported()) {
-      activeStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-      videoEl.srcObject = activeStream;
-      await videoEl.play();
+    activeStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    videoEl.srcObject = activeStream;
+    await videoEl.play();
 
-      const detector = new BarcodeDetector({ formats: ISBN_FORMATS });
+    const detector = await getNativeDetector();
+
+    if (detector) {
       const tick = async () => {
         if (!activeStream) return;
         try {
@@ -112,10 +164,20 @@ export async function startLiveScan(videoEl, onCode, onError) {
       };
       scanLoopId = requestAnimationFrame(tick);
     } else {
-      const reader = await getZxingReader();
-      zxingControls = await reader.decodeFromVideoDevice(undefined, videoEl, (result) => {
-        if (result) report(result.getText());
-      });
+      // Our own reader, on a timer rather than every frame: a pass costs a few
+      // milliseconds at video size, and there's no point scanning faster than
+      // a hand can hold a book still.
+      const tick = () => {
+        if (!activeStream) return;
+        if (videoEl.readyState >= 2) {
+          try {
+            const { grey, width, height } = greyscaleFrom(videoEl, 1280);
+            readBarcodes(grey, width, height, { angles: [0, 90] }).forEach(report);
+          } catch { /* frame not ready */ }
+        }
+        scanTimerId = setTimeout(tick, 120);
+      };
+      scanTimerId = setTimeout(tick, 120);
     }
   } catch (err) {
     onError?.(err);
@@ -129,9 +191,9 @@ export function stopLiveScan(videoEl) {
     cancelAnimationFrame(scanLoopId);
     scanLoopId = null;
   }
-  if (zxingControls) {
-    zxingControls.stop();
-    zxingControls = null;
+  if (scanTimerId) {
+    clearTimeout(scanTimerId);
+    scanTimerId = null;
   }
   if (activeStream) {
     activeStream.getTracks().forEach((t) => t.stop());
