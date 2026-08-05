@@ -58,7 +58,12 @@ async function rpc(op, args) { return await window.__auth(op, args); }
 let current = null;
 export function getAuth() { return { get currentUser() { return current; } }; }
 export async function signInAnonymously() {
-  current = { uid: await rpc("anon", []), email: null };
+  // Real Firebase persists the anonymous user in IndexedDB, so a reload gets
+  // the SAME uid back. The mock must match, or it invents a fresh identity
+  // on every boot and understates what reality guarantees.
+  let uid = localStorage.getItem("__mockAnonUid");
+  if (!uid) { uid = await rpc("anon", []); localStorage.setItem("__mockAnonUid", uid); }
+  current = { uid, email: null };
   return { user: current };
 }
 export const EmailAuthProvider = { credential: (email, password) => ({ email, password }) };
@@ -256,10 +261,12 @@ await E.page.click('[data-intent="create"]');
 await E.page.waitForTimeout(900);
 const oldLibId = await E.page.evaluate(() => localStorage.getItem("shelfie.household.v1"));
 
-// Rewind the cloud to the pre-account format: no uid on any member doc, and
-// a partner device that has never seen the new code.
+// Rewind THIS household's cloud docs to the pre-account format: no uid on
+// any member doc, and a partner device that has never seen the new code.
+// (Scoped to oldLibId — the cloud Map is shared with the earlier scenarios,
+// and rewriting their library under them would test nothing but confusion.)
 for (const [path, data] of cloud.entries()) {
-  if (path.includes("/_member:") && data.uid) {
+  if (path.startsWith(`households/${oldLibId}/`) && path.includes("/_member:") && data.uid) {
     const { uid: _dropped, ...old } = data;
     cloud.set(path, old);
   }
@@ -276,7 +283,8 @@ cloud.set(`households/${oldLibId}/books/k1`, {
 // Upgrade day: the existing phone just opens the app. No taps.
 await E.page.reload();
 await E.page.waitForTimeout(1200);
-const eDoc = [...cloud.entries()].find(([p]) => p.includes("/_member:") && !p.endsWith("kelsey-dev"))?.[1];
+const eDoc = [...cloud.entries()].find(([p]) =>
+  p.startsWith(`households/${oldLibId}/`) && p.includes("/_member:") && !p.endsWith("kelsey-dev"))?.[1];
 console.log("10. old member doc healed on boot:", !!eDoc?.uid);
 if (!eDoc?.uid) problems.push("existing member's doc was not re-stamped with a uid on boot");
 
