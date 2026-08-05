@@ -74,13 +74,25 @@ unless you pass `--network`. Everything else runs offline.
 Copy the closest existing suite. The shape is: mock the network, seed
 `localStorage`, drive the UI, print what you observe, end with an error list.
 
-Two things that have caused trouble more than once:
+Three things that have caused trouble more than once:
 
 1. **In Playwright, the last matching route wins.** Register catch-all mocks
    *before* specific ones or they'll swallow them.
-2. **`addInitScript` re-runs on reload**, so `page.reload()` re-seeds
+
+2. **A `.catch(() => {})` around a click hides a dead selector.** `bugs3.mjs`
+   drove a quick-action move to Wishlist for a long time — a button the card's
+   rail has never offered. Each click waited out the full 30-second timeout and
+   was then swallowed, so three observations printed a shelf that could not have
+   changed and the suite still reported `ERRORS: none`. It cost five and a half
+   minutes a run and proved nothing. The catch isn't the real problem — it's
+   worth keeping where a card may re-render mid-click, and a readable
+   `FAILED — 1c…` beats a stack trace. The problem is a swallowed click with
+   nothing checking what it was supposed to achieve. **Assert the outcome**: a
+   suite that only reports browser errors cannot tell you its own observations
+   have gone stale.
+3. **`addInitScript` re-runs on reload**, so `page.reload()` re-seeds
    localStorage. To test persistence, open a new page in the same context
-   instead.
+   instead — or seed the fixture differently in the first place.
 
 ## What isn't covered
 

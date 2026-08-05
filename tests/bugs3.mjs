@@ -33,28 +33,45 @@ const shelfOf = (id) => page.evaluate((x) =>
   JSON.parse(localStorage.getItem("shelfie.library.v1")).find((b) => b.id === x)?.shelf, id);
 const card = (id) => `.grid-book[data-id="${id}"]`;
 
+// Section 1 spent a long time asserting nothing. It drove a quick-action move
+// to Wishlist, which the card's rail has never offered — it carries To Read
+// and Finished only. Each of those eleven clicks therefore waited out the full
+// 30s Playwright timeout inside a .catch(), which is where five and a half of
+// this suite's six minutes went, and the three observations printed a shelf
+// that could not have changed.
+//
+// The moves go to To Read now, which exists. Not Wishlist: every fixture book
+// carries owned:true, and a wishlist move clears that flag, which would drop
+// b1 off the Owned shelf and shift the counts sections 7 and 10 observe.
+// The expectations are checked rather than printed, so a selector that drifts
+// again fails the suite instead of quietly costing six minutes.
+function check(label, ok, ...rest) {
+  console.log(`${label}:`, ok, ...rest);
+  if (!ok) errors.push(`FAILED — ${label}`);
+}
+
 // ---- 1. mash the same move button many times ----
 await page.click(`${card("b1")} [data-flip]`);
 await page.waitForTimeout(400);
-await page.dblclick(`${card("b1")} [data-qa-move="wishlist"]`).catch(() => {});
+await page.dblclick(`${card("b1")} [data-qa-move="tbr"]`).catch(() => {});
 await page.waitForTimeout(400);
-console.log("1a. a double-tap does NOT move the book:", await shelfOf("b1"), "(want owned)");
+check("1a. a double-tap does NOT move the book", (await shelfOf("b1")) === "owned", `(${await shelfOf("b1")})`);
 // Flip away and back so the button starts disarmed for this phase.
 await page.click(`${card("b1")} .qa-facts`).catch(() => {});
 await page.waitForTimeout(300);
 await page.click(`${card("b1")} [data-flip]`);
 await page.waitForTimeout(300);
 for (let i = 0; i < 8; i++) {
-  await page.click(`${card("b1")} [data-qa-move="wishlist"]`, { force: true }).catch(() => {});
+  await page.click(`${card("b1")} [data-qa-move="tbr"]`, { force: true }).catch(() => {});
   await page.waitForTimeout(60);
 }
 await page.waitForTimeout(500);
-console.log("1b. mashing fast 8× still does not move it:", await shelfOf("b1"), "(want owned)");
-await page.click(`${card("b1")} [data-qa-move="wishlist"]`).catch(() => {});
+check("1b. mashing fast 8× still does not move it", (await shelfOf("b1")) === "owned", `(${await shelfOf("b1")})`);
+await page.click(`${card("b1")} [data-qa-move="tbr"]`).catch(() => {});
 await page.waitForTimeout(500);
-await page.click(`${card("b1")} [data-qa-move="wishlist"]`).catch(() => {});
+await page.click(`${card("b1")} [data-qa-move="tbr"]`).catch(() => {});
 await page.waitForTimeout(500);
-console.log("1c. two deliberate taps DO move it:", await shelfOf("b1"), "(want wishlist)");
+check("1c. two deliberate taps DO move it", (await shelfOf("b1")) === "tbr", `(${await shelfOf("b1")})`);
 
 // ---- 2. two different books armed at once ----
 await page.click('[data-shelf="owned"]');
