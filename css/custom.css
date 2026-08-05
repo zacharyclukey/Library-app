@@ -82,6 +82,21 @@
 
   /* Line weight of the icons: 1.2 is fine and delicate, 2.4 is chunky */
   --icon-stroke: 1.7;
+
+  /* The spines of books that have no cover picture. Each book picks one of
+     these eight (always the same one for the same title), so your shelf
+     looks like a library that bought real books, not a chart. Any colours
+     you like — just keep them DARK, because the title is stamped on top in
+     --spine-ink, which should stay near-white to read like foil stamping. */
+  --spine-ink: #f4efe6;
+  --spine-1: #5c4a3a;   /* umber */
+  --spine-2: #4d5763;   /* slate */
+  --spine-3: #4e5c3f;   /* moss */
+  --spine-4: #7c4437;   /* clay red */
+  --spine-5: #6f5a25;   /* dark sand */
+  --spine-6: #3f4f6b;   /* dusk blue */
+  --spine-7: #655060;   /* mauve */
+  --spine-8: #35544a;   /* pine */
 }
 
 :root[data-skin="custom"][data-mode="dark"] {

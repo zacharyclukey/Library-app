@@ -120,6 +120,19 @@
   --shelf-grad: linear-gradient(180deg, #b08a5e 0%, #8a6741 45%, #6b4d2e 100%);
   --page-texture: var(--noise);
   --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(255, 206, 133, 0.4), transparent 68%);
+
+  /* The cloths this aesthetic binds coverless books in, and the ink their
+     titles are stamped with. Eight is enough variety that a shelf doesn't
+     stripe, few enough that it still looks like one library bought them. */
+  --spine-ink: #f6eedc;
+  --spine-1: #2e5339;
+  --spine-2: #6b2f2a;
+  --spine-3: #2c3a58;
+  --spine-4: #5c4327;
+  --spine-5: #8a6414;
+  --spine-6: #22555a;
+  --spine-7: #563a56;
+  --spine-8: #84402f;
 }
 
 :root[data-skin="reading-room"][data-mode="dark"] {
@@ -192,6 +205,19 @@
   --header-dim: rgba(246, 247, 239, 0.65);
 
   --shelf-grad: linear-gradient(180deg, #c3b389 0%, #a3946c 50%, #857a55 100%);
+
+  /* The cloths this aesthetic binds coverless books in, and the ink their
+     titles are stamped with. Eight is enough variety that a shelf doesn't
+     stripe, few enough that it still looks like one library bought them. */
+  --spine-ink: #f7f5e8;
+  --spine-1: #4a6350;
+  --spine-2: #96525e;
+  --spine-3: #8f4f33;
+  --spine-4: #6d6420;
+  --spine-5: #48607e;
+  --spine-6: #615487;
+  --spine-7: #3f5334;
+  --spine-8: #7d5245;
   --page-texture: var(--noise);
   --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(214, 233, 190, 0.42), transparent 68%);
 }
@@ -268,6 +294,19 @@
   --shelf-grad: linear-gradient(180deg, #9a7f4e 0%, #776037 50%, #55462a 100%);
   --page-texture: var(--noise);
   --page-glow: radial-gradient(120% 55% at 50% -8%, rgba(255, 226, 168, 0.4), transparent 68%);
+
+  /* The cloths this aesthetic binds coverless books in, and the ink their
+     titles are stamped with. Eight is enough variety that a shelf doesn't
+     stripe, few enough that it still looks like one library bought them. */
+  --spine-ink: #eee3cd;
+  --spine-1: #5b2333;
+  --spine-2: #463228;
+  --spine-3: #2f4632;
+  --spine-4: #2b3450;
+  --spine-5: #6a4d21;
+  --spine-6: #6d2e3f;
+  --spine-7: #4a4a24;
+  --spine-8: #443344;
 }
 
 :root[data-skin="dark-academia"][data-mode="dark"] {
@@ -345,6 +384,19 @@
   --shelf-grad: linear-gradient(180deg, #d7dbe4, #c3c9d6);
   --page-texture: none;
   --page-glow: none;
+
+  /* The cloths this aesthetic binds coverless books in, and the ink their
+     titles are stamped with. Eight is enough variety that a shelf doesn't
+     stripe, few enough that it still looks like one library bought them. */
+  --spine-ink: #f4f6fa;
+  --spine-1: #22304d;
+  --spine-2: #3d5573;
+  --spine-3: #1f5f66;
+  --spine-4: #973338;
+  --spine-5: #8a5a13;
+  --spine-6: #45484f;
+  --spine-7: #2e5c40;
+  --spine-8: #5b4780;
 }
 
 :root[data-skin="modern"][data-mode="dark"] {
@@ -898,6 +950,12 @@ body {
 
 /* .cover-wrap and its binding shadow are identity — see css/identity.css. */
 
+/* A coverless book is bound in cloth from the aesthetic's own stock — one of
+   the eight --spine-* colours each skin declares, picked per title in
+   coverHtml(). This used to be a random hue at fixed saturation, identical
+   in every skin: the one part of the shelf the aesthetics never touched,
+   on the objects that are most of the pixels. The shading and the title ink
+   both derive from the skin, so a palette edit is one line per cloth. */
 .cover-fallback {
   position: absolute;
   inset: 0;
@@ -906,8 +964,13 @@ body {
   justify-content: center;
   text-align: center;
   padding: 0.45rem 0.4rem;
-  color: #fff;
-  background: linear-gradient(150deg, hsl(var(--h, 220) 34% 44%), hsl(var(--h, 220) 40% 24%));
+  color: var(--spine-ink, #f6eedc);
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--spine, #5c4a3a) 86%, #fff) 0%,
+    var(--spine, #5c4a3a) 45%,
+    color-mix(in srgb, var(--spine, #5c4a3a) 72%, #000) 100%
+  );
 }
 .fb-title {
   font-family: var(--serif);
