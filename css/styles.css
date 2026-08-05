@@ -1404,7 +1404,7 @@ img.cover.missing { display: none; }
 .qa-facts:empty { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .flip-front, .flip-back { transition: none; }
+  .flip-front, .flip-back, .flip-front::before { transition: none; }
 }
 
 /* ============================================================

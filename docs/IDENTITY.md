@@ -53,6 +53,12 @@ You open a book's actions by its page ends, the stack you'd put a thumb on.
 What this replaced was a three-dot button sitting on top of somebody's cover
 art — a UI control parked on artwork. The affordance belongs to the object.
 
+The stack sits **behind the cover**, showing only the sliver that clears its
+right side. Drawn on top of the artwork it was still a strip of somebody's
+cover spent on a control, just quieter about it than the three dots were. The
+visible page is what carries the motif; the tap target over it is wider than
+the sliver, so it stays a thumb-sized thing to reach for.
+
 - **`css/identity.css`**, section 3
 
 ### 4. The ledge

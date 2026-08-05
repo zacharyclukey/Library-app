@@ -60,13 +60,15 @@
    Sizes and proportions the motifs are built from. They're named rather than
    inlined so that a motif is one number in one place: the cover ratio is read
    by the grid, the list and the detail sheet, and the day a second surface
-   grows a fore-edge it should be the same 11px as the first.
+   grows a fore-edge it should show the same sliver of page as the first.
    ------------------------------------------------------------ */
 
 :root {
   --id-cover-ratio: 2 / 3;      /* a book is taller than it is wide */
   --id-binding-width: 9px;      /* the shaded gutter down a cover's left */
-  --id-edge-width: 11px;        /* the fore-edge you open a card by */
+  --id-edge-width: 15px;        /* the page stack, most of it behind the cover */
+  --id-edge-peek: 5px;          /* how much of it clears the cover's right side */
+  --id-edge-hit: 22px;          /* the thumb target laid over the peek */
   --id-ledge-height: 7px;       /* the shelf each row of books stands on */
   --id-ledge-reach: 0.45rem;    /* how far a ledge runs into the gutters */
   --id-mark-stroke: 1.9;        /* the mark's hand, in every aesthetic */
@@ -168,30 +170,58 @@ body.has-empty-art .empty-art .ico {
    The way into a book's actions is the stack of page ends you'd put a thumb
    on to open it. It belongs to the object. The alternative — and what this
    replaced — is a three-dot button parked on top of somebody's cover art.
+
+   The stack sits *behind* the cover, only --id-edge-peek of it clearing the
+   right side, the way a book turned a little towards you shows its page ends.
+   Drawn at right:0 it was still artwork spent on a control, just quieter
+   about it. So the stack is a pseudo-element under the cover, and .page-edge
+   is left as a bare hit target over it — wide enough for a thumb, painting
+   nothing.
    ------------------------------------------------------------ */
 
-.page-edge {
+.flip-front::before {
+  content: "";
   position: absolute;
-  top: 6%;
-  bottom: 6%;
-  right: 0;
+  /* Shorter than the boards it's bound between, like a real text block. */
+  top: 3%;
+  bottom: 3%;
+  right: calc(var(--id-edge-peek) * -1);
   width: var(--id-edge-width);
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  border-radius: 0 6px 6px 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 0 4px 4px 0;
   background:
     repeating-linear-gradient(
       90deg,
       color-mix(in srgb, var(--page-edge-ink) 92%, #000) 0 1px,
       var(--page-edge-ink) 1px 2.5px
     );
-  box-shadow: inset 1px 0 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.22);
-  transition: width 0.16s ease, filter 0.16s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: right 0.16s ease, filter 0.16s ease;
 }
-.page-edge:hover { width: calc(var(--id-edge-width) + 3px); filter: brightness(1.06); }
-.page-edge:active { filter: brightness(0.94); }
-.grid-book:hover .page-edge { width: calc(var(--id-edge-width) + 2px); }
+/* The cover is what buries the rest of the stack, so it has to paint over it. */
+.flip-front .cover-wrap { z-index: 1; }
+.page-edge {
+  position: absolute;
+  top: 3%;
+  bottom: 3%;
+  right: calc(var(--id-edge-peek) * -1);
+  width: var(--id-edge-hit);
+  z-index: 2;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+/* Reaching for the edge eases more of the stack out from behind the cover. */
+.grid-book:hover .flip-front::before {
+  right: calc((var(--id-edge-peek) + 2px) * -1);
+}
+.flip-front:has(.page-edge:hover)::before {
+  right: calc((var(--id-edge-peek) + 4px) * -1);
+  filter: brightness(1.06);
+}
+.flip-front:has(.page-edge:active)::before { filter: brightness(0.94); }
 
 
 /* ------------------------------------------------------------
