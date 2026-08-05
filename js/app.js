@@ -619,6 +619,10 @@ function renderShelf() {
   $("#empty-text").textContent = filtered
     ? "Nothing matches your search or filters."
     : `Your ${SHELF_LABEL[currentShelf]} shelf is empty.`;
+  // The picture answers the sentence. An empty shelf and a search that found
+  // nothing are different problems, and bare shelving over "nothing matches
+  // your filters" reads as though the books had gone.
+  $(".empty-art").innerHTML = icon(filtered ? "search" : "emptyShelf");
   $("#empty-action").innerHTML = filtered
     ? "Clear filters"
     : `${icon("plus")}<span>Add your first book</span>`;

@@ -861,7 +861,10 @@ body {
    them live with the layouts they belong to, near the bottom of this file. */
 .own-flag .ico { vertical-align: -0.16em; }
 .brand-mark .ico { width: 1.35rem; height: 1.35rem; }
-.empty-art .ico { width: 4.2rem; height: 4.2rem; opacity: 0.4; }
+/* Big enough to be a picture rather than a stray glyph — this is the whole of
+   the first screen a new library has on it — and soft enough that the button
+   under it is still the loudest thing there. */
+.empty-art .ico { width: 6.6rem; height: 6.6rem; opacity: 0.34; }
 .sync-error .ico { vertical-align: -0.16em; margin-right: 0.15rem; }
 
 /* Heads-up in the add dialog when the book is already on a shelf. */

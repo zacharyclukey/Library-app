@@ -98,8 +98,11 @@
    different logo each time, which is the opposite of a logo.
    ------------------------------------------------------------ */
 
-.brand-mark .ico:not(.ico-file),
-.empty-art .ico:not(.ico-file) {
+/* Only the mark itself. This used to also pin .empty-art, from when the empty
+   shelf borrowed the mark for want of its own drawing. It has one now
+   (`emptyShelf`), and that is illustration rather than brand — it should take
+   each aesthetic's hand like every other icon does. */
+.brand-mark .ico:not(.ico-file) {
   stroke-width: var(--id-mark-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
