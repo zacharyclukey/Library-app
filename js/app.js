@@ -221,7 +221,13 @@ function renderNudge() {
   const snoozedUntil = Number(localStorage.getItem(NUDGE_SNOOZE_KEY) ?? 0);
   const candidates = db
     .getBooksOnShelf("completed", currentProfile())
-    .filter((b) => !myRating(b));
+    // Books catalogued in bulk are never asked about. One question a day is
+    // gentle when it's about a book you just closed; asked about three hundred
+    // titles imported from a decade of history it becomes a treadmill you can
+    // never finish — a backlog of homework arriving one card at a time, which
+    // is the thing this card exists to avoid. Same distinction the reading
+    // year already draws: cataloguing is not reading.
+    .filter((b) => !myRating(b) && !b.catalogued);
 
   if (Date.now() < snoozedUntil || !candidates.length || !currentProfile()) {
     el.classList.add("hidden");
@@ -2134,6 +2140,9 @@ document.querySelectorAll("[data-batch-shelf]").forEach((btn) =>
         owned,
         medium: pendingMedium,
         profile: currentProfile() ?? null,
+        // Added as part of a pile, so this is cataloguing rather than
+        // reading — see renderNudge. Ratings stay welcome, never asked for.
+        catalogued: true,
       });
       if (book.workKey && !book.subjects?.length) {
         api.fetchWorkSubjects(book.workKey).then((subjects) => {

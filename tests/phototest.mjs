@@ -259,5 +259,28 @@ const shelved = (page) =>
   await ctx.close();
 }
 
+// 9. A pile sent to Finished must not become a rating treadmill. The nudge is
+//    gentle about one book you just closed; pointed at a bulk-catalogued
+//    shelf it would ask a question a day forever.
+{
+  const { ctx, page } = await open();
+  await page.setInputFiles("#photo-input", await makePhoto(page, ISBNS));
+  await page.waitForTimeout(6000);
+  if (await page.isVisible("#batch-modal")) {
+    await page.click('[data-batch-shelf="completed"]');
+    await page.waitForTimeout(800);
+    await page.reload();
+    await page.waitForTimeout(900);
+    const books = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("shelfie.library.v1") ?? "[]")
+    );
+    console.log("9. six books catalogued straight onto Finished");
+    console.log("   on Finished:", books.filter((b) => b.shelf === "completed").length,
+      "| all unrated:", books.every((b) => !b.ratings || !Object.keys(b.ratings).length));
+    console.log("   rating nudge stays quiet:", !(await page.isVisible("#nudge-card")));
+  }
+  await ctx.close();
+}
+
 console.log("\nERRORS:", errors.length ? errors : "none");
 await browser.close();
