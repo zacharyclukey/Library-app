@@ -227,21 +227,49 @@ body.has-empty-art .empty-art .ico {
 /* ------------------------------------------------------------
    4. THE LEDGE
 
-   Rows of books stand on a shelf. Cells in a grid row stretch to the same
-   height, so these line up into one continuous ledge, and each reaches
-   halfway into the column gutters so neighbours meet with no gap.
+   Rows of books stand on a shelf. Each ledge reaches halfway into the column
+   gutters so neighbours meet and the row reads as one continuous plank.
+
+   It sits directly under the covers, where a shelf goes. It used to be the
+   last thing in the cell, which put the title, author and rating BETWEEN the
+   book and the wood — a shelf with a paragraph under it, holding up nothing.
+
+   A shelf is furniture: pulling a book out doesn't move it. So the ledge is
+   anchored to the top of the cell rather than flowing after the cover, and
+   its offset is one unflipped cover — `padding-top: 150%`, because a
+   percentage padding resolves against the containing block's WIDTH and a
+   cover is 2:3. That gets the exact height with no pixel value to keep in
+   sync. A turned card grows past it and overlaps it, like a book pulled half
+   out of the shelf, and the plank stays dead straight across the row.
+
+   The wood is painted as a strip at the bottom of that invisible box, so the
+   shadow has to come from a filter — a box-shadow would trace the whole box
+   instead of the plank.
    ------------------------------------------------------------ */
 
+.grid-book { position: relative; }
 .grid-book::after {
   content: "";
-  margin-top: auto;
-  margin-left: calc(var(--id-ledge-reach) * -1);
-  margin-right: calc(var(--id-ledge-reach) * -1);
-  height: var(--id-ledge-height);
-  border-radius: 2px 2px 3px 3px;
-  background: var(--shelf-grad);
-  box-shadow: 0 3px 6px -1px rgba(40, 25, 10, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  position: absolute;
+  top: 0;
+  left: calc(var(--id-ledge-reach) * -1);
+  right: calc(var(--id-ledge-reach) * -1);
+  padding-top: calc(150% + var(--id-ledge-height));
+  pointer-events: none;
+  z-index: 0;                      /* behind the card, which is stacked above */
+  background:
+    var(--shelf-grad) bottom center / 100% var(--id-ledge-height) no-repeat;
+  filter: drop-shadow(0 3px 4px rgba(40, 25, 10, 0.35));
 }
+
+/* The book stands in front of the wood, and a turned card extends over it. */
+.grid-book > .flip { position: relative; z-index: 1; }
+
+/* Clear the plank, so the title isn't printed on the shelf edge. The column
+   gap alone lands the text within a pixel of the wood — the ledge is drawn
+   into that gap, not before it. Selector is `.flip + div` rather than
+   `:first-of-type`, which matches the first DIV and .flip is a div. */
+.grid-book > .flip + div { margin-top: var(--id-ledge-height); }
 
 /* assets/shelf.* — your own ledge, tiled. The sanctioned swap: the shelf is
    still there, it's just made of your wood now. (This wins on specificity,
