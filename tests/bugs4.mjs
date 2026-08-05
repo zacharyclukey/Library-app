@@ -54,19 +54,19 @@ console.log("1d. undo restored it:", await count("owned"), "| store:", (await id
 // ---- 2. arm, flip away, flip back: must need two taps again ----
 await page.click('.grid-book[data-id="o1"] [data-flip]');
 await page.waitForTimeout(400);
-await page.click('.grid-book[data-id="o1"] [data-qa-move="wishlist"]'); // arms
+await page.click('.grid-book[data-id="o1"] [data-qa-move="tbr"]'); // arms
 await page.waitForTimeout(500);
-console.log("2a. armed:", await page.$eval('.grid-book[data-id="o1"] [data-qa-move="wishlist"]',
+console.log("2a. armed:", await page.$eval('.grid-book[data-id="o1"] [data-qa-move="tbr"]',
   (e) => e.classList.contains("armed")));
 // tap the empty part of the back to flip it over, then flip back
 await page.click('.grid-book[data-id="o1"] .qa-facts');
 await page.waitForTimeout(500);
 await page.click('.grid-book[data-id="o1"] [data-flip]');
 await page.waitForTimeout(500);
-const stillArmed = await page.$eval('.grid-book[data-id="o1"] [data-qa-move="wishlist"]',
+const stillArmed = await page.$eval('.grid-book[data-id="o1"] [data-qa-move="tbr"]',
   (e) => e.classList.contains("armed"));
 console.log("2b. no longer armed after flipping away:", !stillArmed);
-await page.click('.grid-book[data-id="o1"] [data-qa-move="wishlist"]');
+await page.click('.grid-book[data-id="o1"] [data-qa-move="tbr"]');
 await page.waitForTimeout(400);
 console.log("2c. one tap after re-flipping does not move it:",
   await page.evaluate(() => JSON.parse(localStorage.getItem("shelfie.library.v1"))

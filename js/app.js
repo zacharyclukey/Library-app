@@ -892,10 +892,15 @@ function factsLine(b) {
   return join(year, pages);
 }
 
-function qaButton({ attr, label, on = false }) {
-  return `<button class="qa-btn${on ? " on" : ""}" ${attr} title="${esc(label)}">
-            <span class="qa-label">${esc(label)}</span>
-          </button>`;
+// Icon-only at rest, so five actions fit in a rail down the side of the card.
+// The word is still rendered — hidden in the rail, but present for the
+// tooltip, for anything reading the page aloud, and for the armed state to
+// show when you press one. Losing the label from the screen must not lose it
+// from the machine.
+function qaButton({ attr, label, glyph, on = false }) {
+  return `<button class="qa-btn${on ? " on" : ""}" ${attr}
+            title="${esc(label)}" aria-label="${esc(label)}">${icon(glyph)}<span
+            class="qa-label">${esc(label)}</span></button>`;
 }
 
 function gridCard(b, showNames) {
@@ -912,6 +917,7 @@ function gridCard(b, showNames) {
           <button class="page-edge" data-flip aria-label="Quick actions and details"></button>
         </div>
         <div class="flip-back" aria-hidden="true">
+          <div class="cc-main">
           <div class="cc-head">
             <p class="cc-title">${esc(b.title)}</p>
             <p class="cc-author">${esc((b.authors ?? [])[0] ?? "")}</p>
@@ -922,23 +928,24 @@ function gridCard(b, showNames) {
               `<button class="${rating >= n ? "filled" : ""}" data-qa-rate="${n}"
                        aria-label="Rate ${n}">${rating >= n ? "★" : "☆"}</button>`).join("")}
           </div>
+          <p class="cc-review">${esc(b.reviews?.[currentProfile()]?.text ?? "")}</p>
+          </div>
+          <div class="cc-side">
           <div class="qa-row">
+            ${b.shelf !== "tbr"
+              ? qaButton({ attr: 'data-qa-move="tbr"', label: "To read", glyph: "books" }) : ""}
             ${b.shelf === "tbr" || b.shelf === "owned"
-              ? qaButton({ attr: "data-qa-reading",
-                           label: b.reading ? "Stop" : "Reading",
-                           on: b.reading })
+              ? qaButton({ attr: "data-qa-reading", glyph: "bookmark",
+                           label: b.reading ? "Stop reading" : "Reading now", on: b.reading })
               : ""}
             ${b.shelf !== "completed"
-              ? qaButton({ attr: 'data-qa-move="completed"', label: "Finished" }) : ""}
-            ${b.shelf !== "tbr"
-              ? qaButton({ attr: 'data-qa-move="tbr"', label: "To read" }) : ""}
-            ${b.shelf !== "wishlist"
-              ? qaButton({ attr: 'data-qa-move="wishlist"', label: "Wishlist" }) : ""}
+              ? qaButton({ attr: 'data-qa-move="completed"', label: "Finished", glyph: "check" }) : ""}
           </div>
           <div class="qa-foot">
-            <button class="qa-details" data-qa-details>Details</button>
+            <button class="qa-details" data-qa-details title="Book details" aria-label="Book details">${icon("page")}</button>
             <button class="qa-remove" data-qa-remove
                     aria-label="Remove from library" title="Remove from library">${icon("trash")}</button>
+          </div>
           </div>
         </div>
       </div>
@@ -1774,11 +1781,11 @@ bookList.addEventListener("click", (e) => {
     const to = move.dataset.qaMove;
     // Moving a book between shelves is the one quick action worth a beat of
     // hesitation, so the first tap only arms it.
-    if (move.dataset.armed !== "1") return armQuickAction(move, "Sure?");
+    if (move.dataset.armed !== "1") return armQuickAction(move);
     // Too soon to be a considered second tap — it's a double-tap or a mash.
     // Restart the window rather than counting it, so drumming on the button
     // never commits; only a tap after a pause does.
-    if (Date.now() - armedAt < ARM_DELAY) return armQuickAction(move, "Sure?");
+    if (Date.now() - armedAt < ARM_DELAY) return armQuickAction(move);
     disarmQuickAction();
     undoable(`Moved to ${SHELF_LABEL[to]}`, b, () => {
       const owned = to === "owned" ? true : to === "wishlist" ? false : b.owned || b.shelf === "wishlist";
@@ -1833,7 +1840,10 @@ function armQuickAction(btn, prompt) {
   const label = btn.querySelector(".qa-label");
   if (label) {
     btn.dataset.label = label.textContent;
-    label.textContent = prompt;
+    // With icons, the armed state is also the legend: it says what the next
+    // tap does rather than a bare "Sure?", so pressing a glyph you don't
+    // recognise tells you what it is before it does anything.
+    label.textContent = prompt ?? `${label.textContent}?`;
   }
   navigator.vibrate?.(6);
   armedTimer = setTimeout(disarmQuickAction, 3500);

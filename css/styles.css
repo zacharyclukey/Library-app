@@ -1254,7 +1254,7 @@ img.cover.missing { display: none; }
    and the growth is steered into rows you've already scrolled past (see
    setFlipped) so nothing you're reading jumps. */
 .flip .cover-wrap { transition: aspect-ratio 0.4s cubic-bezier(0.3, 0.9, 0.4, 1); }
-.flip.flipped .cover-wrap { aspect-ratio: 2 / 3.95; }
+.flip.flipped .cover-wrap { aspect-ratio: 2 / 1.95; }
 @media (prefers-reduced-motion: reduce) {
   .flip .cover-wrap { transition: none; }
 }
@@ -2328,3 +2328,50 @@ li.owned .own-flag { color: var(--green); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+
+/* ---------- the turned card, opened out ----------
+   Five actions as icons in a rail down the side, where a thumb already
+   rests. Icons are what make the rail fit: labelled buttons need width the
+   card hasn't got, and stacking them needed height it hadn't either. The
+   label is still in the markup, just not shown here — pressing a button
+   arms it and puts the word back (see armQuickAction). */
+.grid-book:has(.flip.flipped) { grid-column: span 2; }
+.flip.flipped .flip-back { flex-direction: row; gap: 0.45rem; }
+.flip-back .cc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.flip-back .cc-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  border-left: 1px dashed color-mix(in srgb, var(--stock-ink, #4a3b28) 24%, transparent);
+  padding-left: 0.45rem;
+}
+.flip-back .cc-side .qa-row,
+.flip-back .cc-side .qa-foot { display: flex; flex-direction: column; gap: 0.32rem; margin: 0; }
+.flip-back .cc-side .qa-foot { margin-top: auto; }
+.flip-back .cc-side .qa-btn,
+.flip-back .cc-side .qa-details,
+.flip-back .cc-side .qa-remove {
+  width: 2.05rem; height: 2.05rem; padding: 0;
+  display: grid; place-items: center; border-radius: 9px; flex: none;
+}
+.flip-back .cc-side .ico { width: 1.05rem; height: 1.05rem; }
+/* Hidden rather than absent, so the word is there to be revealed and there
+   for a screen reader. display:none also keeps it out of overflow maths. */
+.flip-back .cc-side .qa-label { display: none; }
+/* Armed: the icon steps aside and the word says what the next tap will do,
+   which is how you learn what a glyph means without a legend. */
+.flip-back .cc-side .qa-btn.armed { width: 100%; padding: 0 0.4rem; }
+.flip-back .cc-side .qa-btn.armed .ico { display: none; }
+.flip-back .cc-side .qa-btn.armed .qa-label { display: block; font-size: 0.62rem; white-space: nowrap; }
+.cc-review {
+  margin: 0; flex: 1; min-height: 0; overflow: hidden;
+  font-size: 0.62rem; line-height: 1.45; font-style: italic;
+  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 78%, transparent);
+}
+.cc-review:empty::before {
+  content: "No review yet."; font-style: normal;
+  color: color-mix(in srgb, var(--stock-ink, #4a3b28) 42%, transparent);
+}
+.flip-back .cc-title { font-size: 0.8rem; }

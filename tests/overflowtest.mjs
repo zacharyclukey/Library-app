@@ -21,16 +21,23 @@ for (const width of [320, 360, 390, 430, 768]) {
   const m = await page.evaluate(() => {
     const back = document.querySelector(".flip-back");
     const kids = [...back.children];
-    const inner = kids.reduce((a, k) => a + k.getBoundingClientRect().height, 0);
+    // The back lays its columns out side by side, so summing every child
+    // counts the whole card twice. Columns are measured against the tallest
+    // one; a stacked back is still a sum.
+    const heights = kids.map((k) => k.getBoundingClientRect().height);
+    const row = getComputedStyle(back).flexDirection === "row";
+    const inner = row ? Math.max(0, ...heights) : heights.reduce((a, h) => a + h, 0);
     const cs = getComputedStyle(back);
     const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
     const btn = document.querySelector(".qa-btn").getBoundingClientRect();
-    const label = document.querySelector(".qa-label");
+    // The label is hidden in the icon rail until a button is armed; measure
+    // one that is actually laid out.
+    const label = document.querySelector(".cc-main .qa-label") ?? document.querySelector(".qa-label");
     return {
       backH: Math.round(back.getBoundingClientRect().height),
       contentH: Math.round(inner + pad),
       btnH: Math.round(btn.height), btnW: Math.round(btn.width),
-      clipped: label.scrollWidth > label.clientWidth + 1,
+      clipped: label ? label.scrollWidth > label.clientWidth + 1 : false,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
