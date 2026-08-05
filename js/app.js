@@ -3023,7 +3023,7 @@ async function runExport(format) {
   }
 
   if (format === "csv") {
-    xport.download(`shelfie-${name}.csv`, xport.buildCsv(books, myRating), "text/csv");
+    xport.download(`shelfie-${name}.csv`, xport.buildCsv(books, myRating, displayShelf), "text/csv");
     status("Spreadsheet downloaded.");
     return;
   }
